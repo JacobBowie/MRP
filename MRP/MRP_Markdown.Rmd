@@ -1,0 +1,3426 @@
+---
+title: "MRP"
+author: "Jacob_Bowie"
+date: "`r Sys.Date()`"
+output:  
+   html_document:
+    fig_width: 10
+    fig_height: 6
+    dpi: 300
+    fig_format: "png"
+    text_size: 12
+---
+
+# Maximal returns protocol (MRP) analysis
+
+```{r Load and format data, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+set.seed(0308)
+# Function to install and load packages efficiently
+install_and_load_packages <- function(packages) {
+  # Check which packages are not installed
+  new_packages <- packages[!packages %in% installed.packages()[,"Package"]]
+  
+  # Install missing packages if any
+  if(length(new_packages)) {
+    install.packages(new_packages)
+  }
+  # Load all packages, with suppressed messages
+  invisible(sapply(packages, function(pkg) {
+    suppressMessages(library(pkg, character.only = TRUE))
+  }))
+  # Report which packages were newly installed
+  if(length(new_packages)) {
+    message("Newly installed packages: ", paste(new_packages, collapse = ", "))
+  }}
+# Updated package list with recommended additions and removing duplicates
+required_packages <- c(
+  # Data handling
+  "tidyverse", "readxl", "writexl", "openxlsx", "dplyr", "tidyr", "stringr", "purrr",
+  # Statistical analysis
+  "car", "broom", "lme4", "emmeans", "effectsize", 
+  # Visualization
+  "ggplot2", "ggpubr", "ggsignif", "cowplot", "gridExtra", "ggrepel", 
+  "corrplot", "ggtext", "ggsci", "viridis",
+  # Reporting
+  "knitr", "kableExtra", "flextable"
+)
+# Remove any duplicates
+required_packages <- unique(required_packages)
+# Install and load packages
+install_and_load_packages(required_packages)
+# Get the current date and format it as mmddyyyy
+date <- format(Sys.Date(), "%m%d%Y")
+setwd("G:/My Drive/UCONN/Publications or Projects/MRP/MRP")
+# Create the directory name with todays date and check if it exists
+output_directory <- paste( date, sep = "_","output")
+if (!dir.exists(output_directory)) {
+  dir.create(output_directory)}
+
+# Define color values
+dark_blue_color <- "#00205B"   # Dark blue color
+light_blue_color <- "#6699CC"  # Light blue color
+third_color <- "#A0C9E0"       # Third color
+lbs_to_kg <- 0.45359237
+
+# Read in the Excel file and perform all transformations in a single pipeline
+mydata <- read_excel("MRP.xlsx", sheet = "Strength", col_names = TRUE) %>%
+  select(1:3, 7:9) %>%
+  rename(Subject = 1, Measure = 2, Exercise = 3, PRE = 4, MID = 5, POST = 6) %>%
+  filter(!(Subject %in% c("SUB 5", "SUB 13"))) %>%  # Remove subjects 5 and 13 due to missing data
+  mutate(
+    PRE = as.numeric(PRE),
+    MID = as.numeric(MID),
+    POST = as.numeric(POST)  )
+
+# Define the file name with the current date
+file_name <- paste0(output_directory, "/", date, "Strength_raw_data.xlsx")
+write_xlsx(mydata, file_name)
+
+# Define the replacements
+replacements <- c(
+  "Overhead Press" = "OHP",
+  "Lat Pull down" = "Lat Pull",
+  "Leg Press" = "Leg Press",
+  "Bent Over Row" = "Bent Row",
+  "Seated Row" = "Seated Row",
+  "Lat Pulldown" = "Lat Pull")
+# Apply the replacements to the Exercise column
+mydata$Exercise <- dplyr::recode(mydata$Exercise, !!!replacements)
+upper_exercises <- c("OHP", "Lat Pull", "Bent Row", "Seated Row")
+lower_exercises <- c("Leg Press", "Deadlift")
+
+# Define the subjects that are trained and untrained
+trained_subjects <- c(8, 17, 18, 19)
+untrained_subjects <- c(2, 3, 10, 11, 14)
+trained_subjects <- paste0("SUB ", trained_subjects)
+untrained_subjects <- paste0("SUB ", untrained_subjects)
+
+# Add a new column "TrainingStatus" based on the subjects
+mydata <- mydata %>%
+  mutate(TrainingStatus = ifelse(Subject %in% trained_subjects, "trained", "untrained"))
+
+mydata_combined <- mydata %>%
+  mutate(Measure_Exercise = paste(Measure, Exercise, sep = "_")) %>%
+  filter(Measure_Exercise != "1RM_Bent Row" & Measure_Exercise != "10RM_Bent Row")
+
+# Fix the duplicated entries in mydata_combined
+mydata_combined_fixed <- mydata_combined %>%
+  filter(!(Subject == "SUB 3" & 
+           Measure == "10RM" & 
+           Exercise == "Seated Row" & 
+           PRE == 90.7 & 
+           MID == 93.0 & 
+           POST == 95.3))
+```
+
+## Assessing Normality and homogeneity of variance
+
+```{r Assessing Normality and homogeneity of variance, echo=FALSE}
+# Pivot the data into a longer format
+mydata_long <- pivot_longer(mydata_combined, cols = c(PRE, MID, POST),
+                            names_to = "Time", values_to = "Value")
+
+# Group  data by 'Measure_Exercise' and perform the Shapiro-Wilk test for each group
+normality_tests <- mydata_long %>%
+  group_by(Measure_Exercise) %>%
+  summarize(p_value = shapiro.test(Value)$p.value, .groups = 'drop')
+# Print the results
+kable(normality_tests, digits = 3, caption = "Shapiro-Wilk test for normality group_by(Measure_Exercise) reveals measures are normally distributed ")
+
+# Create a histogram facetted by "Measure_Exercise" and colored by Time
+ggplot(mydata_long, aes(x = Value, fill = Time)) +
+  geom_histogram(binwidth = 2, position = "dodge") +
+  facet_wrap(~ Measure_Exercise, scales = "free") +  # Updated to allow for free scales if necessary
+  labs(x = "Value", y = "Frequency") +
+  ggtitle("Histogram Facetted by Measure_Exercise and Colored by Time") +
+  theme_pubr()
+
+```
+
+
+
+```{r Assessing Normality and homogeneity of variance2, echo=FALSE}
+normality_tests <- mydata_long %>%
+  group_by(Measure_Exercise, TrainingStatus) %>%
+  summarize(p_value = shapiro.test(Value)$p.value, .groups = 'drop')
+# Print the results
+filter(normality_tests, p_value < 0.05) %>%
+  kable(digits = 3, caption = "Shapiro-Wilk test for normality group_by(Measure_Exercise, TrainingStatus) ")
+
+# Create a histogram facetted by "Measure_Exercise" and colored by Time
+mydata_filtered <- mydata_long %>%
+  filter(Measure_Exercise %in% c( "10RM_Lat Pull", "1RM_Seated Row"	)) %>%
+  filter(TrainingStatus == "untrained")
+ggplot(mydata_filtered, aes(x = Value, fill = Time)) +
+  geom_histogram(binwidth = 2, position = "dodge") +
+  facet_wrap(~ Measure_Exercise, scales = "free") +  # Updated to allow for free scales if necessary
+  ggtitle("Histogram of non-normal measures by training status") +
+   theme_pubr()
+```
+
+
+
+```{r Assessing Normality and homogeneity of variance3, echo=FALSE, warning=FALSE}
+# Group data by 'Measure_Exercise' and 'Time' perform the Shapiro-Wilk test for each group
+normality_tests <- mydata_long %>%
+  group_by(Measure_Exercise, Time) %>%
+  summarize(p_value = shapiro.test(Value)$p.value, .groups = 'drop')
+# Filter for sig non-normality 
+filtered_normality_tests <- filter(normality_tests, p_value < 0.05)
+kable(filtered_normality_tests, digits = 3, caption = "Shapiro-Wilk test for non-normality group_by(Measure_Exercise, Time) reveals OHP and Seated Row are not normally distributed at specific timepoints")
+```
+
+
+
+```{r Assessing Normality and homogeneity of variance4, echo=FALSE, warning=FALSE}
+normality_tests <- mydata_long %>%
+  group_by(Measure_Exercise, Time, TrainingStatus) %>%
+  filter(n() >= 3) %>%  # Ensure each group has at least 3 observations
+  summarize(
+    p_value = shapiro.test(Value)$p.value,
+    .groups = 'drop'  # Drop the grouping structure after summarizing
+  )
+
+# Filter for sig non-normality 
+filtered_normality_tests <- filter(normality_tests, p_value < 0.05)
+kable(filtered_normality_tests, digits = 3, caption = "Shapiro-Wilk test for non-normality group_by(Measure_Exercise, Time, TrainingStatus)")
+```
+
+Significantly not normal distribution at select timepoints. Slight right skewness in the data, but the data is not too far from normality. 
+OHP has a very tight range, with some very low values the extra weak subjects skewing the data 
+
+```{r Histograms, echo=FALSE}
+# Filter for sig non-normality 
+mydata_long %>%
+  filter(Measure_Exercise %in% c("10RM_OHP", "1RM_Seated Row", "10RM_Seated Row"))%>%
+  ggplot(aes(x = Value, fill = Time)) +
+  geom_histogram(binwidth = 5, position = "dodge") +  # Set position to "dodge" to unstack bars
+  facet_wrap(~ Measure_Exercise, scales = "free") +
+  labs(x = "Value", y = "Frequency") +
+  ggtitle("Histogram Facetted by Measure_Exercise") +
+  theme_pubr()
+
+#Filter for sig non-normality by training status
+mydata_long %>%
+  filter(Measure_Exercise %in% c("10RM_Seated Row", "1RM_Seated Row", "10RM_Leg Press", "10RM_Lat Pull"))%>%
+  ggplot(aes(x = Value, fill = TrainingStatus, color = Time)) +
+  geom_histogram(binwidth = 5, position = "dodge") +  # Set position to "dodge" to unstack bars
+  facet_wrap(~ Measure_Exercise, scales = "free") +
+  labs(x = "Value", y = "Frequency") +
+  ggtitle("Histogram Facetted by Measure_Exercise and TrainingStatus") +
+  theme_pubr()
+
+```
+
+1RM_Seated Row untrained had once participant with a very low value, skewing the data. (SUB 11 POST 36.3 whereas average is about 90 for the other participants)
+10RM_Seated Row Trained had one participant outlier with 100 vs avg of 70 
+10RM_Lat Pull untrained had two participants with 31.8, 45.4, vs 68 in other three participants
+10RM_Leg Press untrained had the one weak participant
+10RM_Leg Press trained had one extra strong participant
+Small sample size, so outliers have a large impact on the data
+
+## Perform Levene's Test for homogeneity of variances
+
+```{r Levenes Test Measure_exercise, echo=TRUE}
+leveneTest(Value ~ Time * Measure_Exercise, data = mydata_long)
+leveneTest(Value ~ Time * Measure_Exercise * TrainingStatus, data = mydata_long)
+```
+
+Variance is homogenous
+
+## Perform Levene's Test for each Measure
+
+```{r Levenes Test, echo=TRUE, warning=FALSE}
+levene_results <- mydata_long %>%
+  group_by(Measure_Exercise ) %>%
+  do(tidy(leveneTest(Value ~ Time, data = .)))
+filtered_levene_results <- filter(levene_results, p.value < 0.05)
+kable(filtered_levene_results, digits = 3)
+#no significant differences in variance
+levene_results <- mydata_long %>%
+  group_by(Measure_Exercise, TrainingStatus ) %>%
+  do(tidy(leveneTest(Value ~ Time, data = .)))
+filtered_levene_results <- filter(levene_results, p.value < 0.05)
+kable(filtered_levene_results, digits = 3)
+```
+
+Variance is homogenous for each measure
+1RM_OHP trained has a significant difference in variance (p=0.049), but the sample size is small and the effect is barely <0.05
+
+#### Step 1: ANOVA 
+
+```{r ANOVA, echo=FALSE}
+# Combine Measure and Exercise columns into a unified identifier
+mydata_mutate <- mydata %>%
+  filter(Exercise != "Bent Row") %>%
+  unite("Measure", Measure, Exercise, sep = "_") 
+
+# Reshape to long format for analysis
+mydata_reshaped <- mydata_mutate %>%
+  pivot_longer(cols = c("PRE", "MID", "POST"), names_to = "Timepoint", values_to = "Weight") %>%
+  mutate(Timepoint = factor(Timepoint, levels = c("PRE", "MID", "POST")))
+
+# Create a function to run and extract ANOVA results
+run_anova <- function(data, formula, filter_var = NULL, filter_value = NULL) {
+  # Apply filter if provided
+  if (!is.null(filter_var) && !is.null(filter_value)) {
+    data <- data %>% filter(!!sym(filter_var) == filter_value)
+  }
+  # Get unique measures
+  measures <- unique(data$Measure)
+  
+  # Initialize results data frame
+  results <- data.frame()
+  
+  # Loop through measures
+  for (measure in measures) {
+    # Subset data for current measure
+    measure_data <- data %>% filter(Measure == measure)
+    
+    # Fit model and extract ANOVA table
+    model <- lm(formula, data = measure_data)
+    anova_result <- anova(model)
+    
+    # Process results with broom
+    tidy_result <- tidy(anova_result) %>%
+      mutate(
+        Measure = measure,
+        filter_condition = if(is.null(filter_value)) "all" else filter_value
+      )
+    # Add to results
+    results <- bind_rows(results, tidy_result)
+  }
+  return(results)
+}
+# Run different models
+# 1. Full model with interaction
+full_model_results <- run_anova(
+  mydata_reshaped, 
+  Weight ~ Timepoint * TrainingStatus + Subject
+)
+# 2. Model without interaction (all subjects)
+main_effects_results <- run_anova(
+  mydata_reshaped, 
+  Weight ~ Timepoint + Subject
+)
+# 3. Trained subjects only
+trained_results <- run_anova(
+  mydata_reshaped, 
+  Weight ~ Timepoint + Subject,
+  "TrainingStatus", "trained"
+)
+# 4. Untrained subjects only
+untrained_results <- run_anova(
+  mydata_reshaped, 
+  Weight ~ Timepoint + Subject,
+  "TrainingStatus", "untrained"
+)
+# Combine all results with labels for clearer reporting
+all_anova_results <- bind_rows(
+  full_model_results %>% mutate(model_type = "Full model with interaction"),
+  main_effects_results %>% mutate(model_type = "Main effects only"),
+  trained_results %>% mutate(model_type = "Trained subjects only"),
+  untrained_results %>% mutate(model_type = "Untrained subjects only")
+)
+# Add post-hoc tests for significant effects
+# Create a function for post-hoc analysis
+run_posthoc <- function(data, measure_name) {
+  measure_data <- data %>% filter(Measure == measure_name)
+  
+  # Create model for emmeans
+  model <- lm(Weight ~ Timepoint * TrainingStatus + Subject, data = measure_data)
+  
+  # Run pairwise comparisons
+  posthoc <- emmeans(model, pairwise ~ Timepoint, adjust = "tukey")
+  
+  # Extract and format results
+  posthoc_results <- tidy(posthoc$contrasts) %>%
+    mutate(Measure = measure_name)
+  
+  return(posthoc_results)
+}
+# Identify measures with significant time effects
+sig_measures <- full_model_results %>%
+  filter(term == "Timepoint", p.value < 0.05) %>%
+  pull(Measure)
+
+# Run post-hoc tests for significant measures
+posthoc_results <- map_df(sig_measures, ~run_posthoc(mydata_reshaped, .))
+
+# Create formatted tables with kableExtra
+full_model_table <- full_model_results %>%
+  filter(term %in% c("Timepoint", "TrainingStatus", "Timepoint:TrainingStatus")) %>%
+  select(Measure, term, statistic, p.value) %>%
+  mutate(significance = case_when(
+    p.value < 0.001 ~ "***",
+    p.value < 0.01 ~ "**", 
+    p.value < 0.05 ~ "*",
+    TRUE ~ "ns"
+  )) %>%
+  arrange(Measure, term)
+
+# Display results with kableExtra for better formatting
+full_model_table %>%
+  kbl(digits = 3, caption = "ANOVA results for each measure (Weight ~ Timepoint * TrainingStatus + Subject)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  pack_rows(index = table(full_model_table$Measure))
+
+# Display post-hoc results for significant time effects
+posthoc_results %>%
+  filter(adj.p.value < 0.05) %>%
+  mutate(
+    comparison = str_replace_all(contrast, " - ", " vs "),
+    p.value = round(adj.p.value, 3),
+    significance = case_when(
+      adj.p.value < 0.001 ~ "***",
+      adj.p.value < 0.01 ~ "**", 
+      adj.p.value < 0.05 ~ "*",
+      TRUE ~ "ns"
+    )
+  ) %>%
+  select(Measure, comparison, estimate, p.value, significance) %>%
+  kbl(caption = "Significant pairwise comparisons between timepoints") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  pack_rows(index = table(posthoc_results$Measure[posthoc_results$adj.p.value < 0.05]))
+
+# Save comprehensive results to file if needed
+write_xlsx(list(
+  "Full Model" = full_model_results,
+  "Main Effects" = main_effects_results,
+  "Trained Only" = trained_results,
+  "Untrained Only" = untrained_results,
+  "Post-Hoc Tests" = posthoc_results
+), paste0(output_directory, "/", date, "_comprehensive_anova_results.xlsx"))
+```
+
+The analysis reveals significant effects of time (PRE, MID, POST) on strength performance across all exercises (both 1RM and 10RM), indicating that the training intervention was effective in producing strength adaptations. All 12 measures showed statistically significant improvements over time (p < 0.05).
+Training status was a significant factor for most exercises, with 9 out of 12 measures showing significant differences between trained and untrained individuals. The exceptions were 10RM_Seated Row, 1RM_Leg Press, and 10RM_Leg Press (though this last one was still significant at p=0.037).
+Interestingly, there was minimal evidence for interaction effects between training status and time. Only 1RM_Lat Pull showed a significant interaction (p=0.023), suggesting that for this exercise, trained and untrained individuals responded differently to the intervention. For all other exercises, both groups showed similar patterns of improvement despite their different baseline levels.
+The pairwise comparisons reveal that significant strength improvements occurred both from PRE to MID and from MID to POST timepoints, demonstrating progressive adaptation throughout the intervention period. Many exercises showed continued improvements in the later phase of training (MID to POST), indicating that strength adaptations were still occurring and hadn't plateaued.
+The warning messages about nesting structure (Subject within TrainingStatus) suggest your statistical model appropriately accounts for the fact that subjects are nested within their training status group, but interpretation requires caution due to the involvement in interactions.
+These findings support that:
+
+The resistance training program effectively improved strength across multiple exercises
+Training effects were similar for both trained and untrained individuals (parallel improvement trajectories)
+Both 1RM and 10RM measures responded positively to training
+Strength gains continued throughout the duration of the program
+
+This suggests that the training program was well-designed to elicit progressive adaptations regardless of initial training status, with only lat pulldown showing evidence of differential responses between trained and untrained participants.
+
+# Step 2: Calculate mean, standard deviation, and mean±SD for PRE, MID, POST and calculate p-values
+
+```{r Summary Stats, echo=FALSE, warning=FALSE, message=FALSE}
+# Calculate summary statistics for all subjects
+mydata_summary <- mydata_combined %>%
+  group_by(Measure_Exercise) %>%
+  summarize(
+    PRE_Mean = mean(PRE, na.rm = TRUE),
+    PRE_SD = sd(PRE, na.rm = TRUE),
+    PRE_n = sum(!is.na(PRE)),
+    MID_Mean = mean(MID, na.rm = TRUE),
+    MID_SD = sd(MID, na.rm = TRUE),
+    MID_n = sum(!is.na(MID)),
+    POST_Mean = mean(POST, na.rm = TRUE),
+    POST_SD = sd(POST, na.rm = TRUE),
+    POST_n = sum(!is.na(POST)),
+    PRE_Mean_SD = paste0(round(PRE_Mean, 2), "\u00B1", round(PRE_SD, 2)),
+    MID_Mean_SD = paste0(round(MID_Mean, 2), "\u00B1", round(MID_SD, 2)),
+    POST_Mean_SD = paste0(round(POST_Mean, 2), "\u00B1", round(POST_SD, 2)),
+    .groups = 'drop'
+  )
+
+# Calculate Hedge's g (bias-corrected effect size for small samples)
+mydata_summary <- mydata_summary %>%
+  mutate(
+    # Hedge's g for PRE to MID
+    hedges_g_pre_mid = ((MID_Mean - PRE_Mean) / 
+                        sqrt((((PRE_n - 1) * PRE_SD^2) + ((MID_n - 1) * MID_SD^2)) / 
+                             (PRE_n + MID_n - 2))) * 
+                        (1 - (3 / (4 * (PRE_n + MID_n - 2) - 1))),
+    
+    # Hedge's g for PRE to POST
+    hedges_g_pre_post = ((POST_Mean - PRE_Mean) / 
+                         sqrt((((PRE_n - 1) * PRE_SD^2) + ((POST_n - 1) * POST_SD^2)) / 
+                              (PRE_n + POST_n - 2))) * 
+                         (1 - (3 / (4 * (PRE_n + POST_n - 2) - 1))),
+    
+    # Hedge's g for MID to POST
+    hedges_g_mid_post = ((POST_Mean - MID_Mean) / 
+                         sqrt((((MID_n - 1) * MID_SD^2) + ((POST_n - 1) * POST_SD^2)) / 
+                              (MID_n + POST_n - 2))) * 
+                         (1 - (3 / (4 * (MID_n + POST_n - 2) - 1)))
+  ) %>%
+  select(-PRE_Mean, -PRE_SD, -PRE_n, -MID_Mean, -MID_SD, -MID_n, -POST_Mean, -POST_SD, -POST_n)
+
+# Create long-format data for statistical testing
+mydata_long <- mydata_combined %>%
+  pivot_longer(cols = c("PRE", "MID", "POST"), names_to = "Timepoint", values_to = "Weight") %>%
+  mutate(Timepoint = factor(Timepoint, levels = c("PRE", "MID", "POST")))
+
+# Function to run paired t-tests for each timepoint pair
+# Function to run paired t-tests with multiple grouping variables
+run_paired_ttests_grouped <- function(data, group_vars) {
+  # Create a combined grouping variable
+  data$GroupID <- do.call(paste, c(data[group_vars], sep = "___"))
+  
+  # Get all unique group combinations
+  unique_groups <- unique(data$GroupID)
+  
+  # Prepare results dataframe
+  results <- data.frame(
+    GroupID = character(),
+    p_val_pre_mid = numeric(),
+    p_val_pre_post = numeric(),
+    p_val_mid_post = numeric(),
+    stringsAsFactors = FALSE
+  )
+  
+  # For each unique group combination
+  for (g in unique_groups) {
+    # Filter data for this group
+    group_data <- subset(data, GroupID == g)
+    
+    # Match subjects across timepoints to ensure proper pairing
+    pre_subj <- group_data$Subject[group_data$Timepoint == "PRE"]
+    mid_subj <- group_data$Subject[group_data$Timepoint == "MID"]
+    post_subj <- group_data$Subject[group_data$Timepoint == "POST"]
+    
+    # Find common subjects for each comparison
+    pre_mid_subj <- intersect(pre_subj, mid_subj)
+    pre_post_subj <- intersect(pre_subj, post_subj)
+    mid_post_subj <- intersect(mid_subj, post_subj)
+    
+    # Get matched data
+    pre_mid_pre <- sapply(pre_mid_subj, function(s) {
+      group_data$Weight[group_data$Timepoint == "PRE" & group_data$Subject == s]
+    })
+    pre_mid_mid <- sapply(pre_mid_subj, function(s) {
+      group_data$Weight[group_data$Timepoint == "MID" & group_data$Subject == s]
+    })
+    
+    pre_post_pre <- sapply(pre_post_subj, function(s) {
+      group_data$Weight[group_data$Timepoint == "PRE" & group_data$Subject == s]
+    })
+    pre_post_post <- sapply(pre_post_subj, function(s) {
+      group_data$Weight[group_data$Timepoint == "POST" & group_data$Subject == s]
+    })
+    
+    mid_post_mid <- sapply(mid_post_subj, function(s) {
+      group_data$Weight[group_data$Timepoint == "MID" & group_data$Subject == s]
+    })
+    mid_post_post <- sapply(mid_post_subj, function(s) {
+      group_data$Weight[group_data$Timepoint == "POST" & group_data$Subject == s]
+    })
+    
+    # Conduct paired t-tests
+    p_pre_mid <- if(length(pre_mid_pre) > 1) {
+      tryCatch(
+        t.test(pre_mid_pre, pre_mid_mid, paired = TRUE)$p.value,
+        error = function(e) NA_real_
+      )
+    } else NA_real_
+    
+    p_pre_post <- if(length(pre_post_pre) > 1) {
+      tryCatch(
+        t.test(pre_post_pre, pre_post_post, paired = TRUE)$p.value,
+        error = function(e) NA_real_
+      )
+    } else NA_real_
+    
+    p_mid_post <- if(length(mid_post_mid) > 1) {
+      tryCatch(
+        t.test(mid_post_mid, mid_post_post, paired = TRUE)$p.value,
+        error = function(e) NA_real_
+      )
+    } else NA_real_
+    
+    # Extract the original group values
+    group_values <- group_data[1, group_vars, drop = FALSE]
+    
+    # Add to results
+    result_row <- data.frame(
+      p_val_pre_mid = p_pre_mid,
+      p_val_pre_post = p_pre_post,
+      p_val_mid_post = p_mid_post
+    )
+    result_row <- cbind(group_values, result_row)
+    
+    results <- rbind(results, result_row)
+  }
+  
+  return(results)
+}
+# Calculate p-values for all measures (without considering training status)
+p_values <- run_paired_ttests_grouped(
+  mydata_long, 
+  "Measure_Exercise"  # Just pass a single variable as a character vector
+)# Join summary stats and p-values
+summary_p_values1 <- left_join(mydata_summary, p_values, by = "Measure_Exercise")
+
+# Calculate summary statistics by training status
+mydata_summary_TvsU <- mydata_combined %>%
+  group_by(Measure_Exercise, TrainingStatus) %>%
+  summarize(
+    PRE_Mean = mean(PRE, na.rm = TRUE),
+    PRE_SD = sd(PRE, na.rm = TRUE),
+    PRE_n = sum(!is.na(PRE)),
+    MID_Mean = mean(MID, na.rm = TRUE),
+    MID_SD = sd(MID, na.rm = TRUE),
+    MID_n = sum(!is.na(MID)),
+    POST_Mean = mean(POST, na.rm = TRUE),
+    POST_SD = sd(POST, na.rm = TRUE),
+    POST_n = sum(!is.na(POST)),
+    PRE_Mean_SD = paste0(round(PRE_Mean, 2), "\u00B1", round(PRE_SD, 2)),
+    MID_Mean_SD = paste0(round(MID_Mean, 2), "\u00B1", round(MID_SD, 2)),
+    POST_Mean_SD = paste0(round(POST_Mean, 2), "\u00B1", round(POST_SD, 2)),
+    .groups = 'drop'
+  )
+
+# Calculate Hedge's g by training status
+mydata_summary_TvsU <- mydata_summary_TvsU %>%
+  mutate(
+    # Hedge's g for PRE to MID
+    hedges_g_pre_mid = ((MID_Mean - PRE_Mean) / 
+                        sqrt((((PRE_n - 1) * PRE_SD^2) + ((MID_n - 1) * MID_SD^2)) / 
+                             (PRE_n + MID_n - 2))) * 
+                        (1 - (3 / (4 * (PRE_n + MID_n - 2) - 1))),
+    
+    # Hedge's g for PRE to POST
+    hedges_g_pre_post = ((POST_Mean - PRE_Mean) / 
+                         sqrt((((PRE_n - 1) * PRE_SD^2) + ((POST_n - 1) * POST_SD^2)) / 
+                              (PRE_n + POST_n - 2))) * 
+                         (1 - (3 / (4 * (PRE_n + POST_n - 2) - 1))),
+    
+    # Hedge's g for MID to POST
+    hedges_g_mid_post = ((POST_Mean - MID_Mean) / 
+                         sqrt((((MID_n - 1) * MID_SD^2) + ((POST_n - 1) * POST_SD^2)) / 
+                              (MID_n + POST_n - 2))) * 
+                         (1 - (3 / (4 * (MID_n + POST_n - 2) - 1)))
+  ) %>%
+  select(-PRE_Mean, -PRE_SD, -PRE_n, -MID_Mean, -MID_SD, -MID_n, -POST_Mean, -POST_SD, -POST_n)
+
+# Calculate p-values by training status
+# Calculate p-values by training status (considering both Measure_Exercise and TrainingStatus)
+p_values_by_status <- run_paired_ttests_grouped(
+  mydata_long %>% filter(Measure_Exercise != "10RM_Bench Press" | TrainingStatus != "trained"),
+  c("Measure_Exercise", "TrainingStatus")
+)
+# Join summary stats and p-values for training status comparison
+summary_p_values2 <- left_join(
+  mydata_summary_TvsU, 
+  p_values_by_status, 
+  by = c("Measure_Exercise", "TrainingStatus")
+)
+
+# Format p-values for display
+format_pvalue <- function(p) {
+  if(is.na(p)) return("N/A")
+  if(p < 0.001) return("<0.001***")
+  if(p < 0.01) return(paste0(round(p, 3), "**"))
+  if(p < 0.05) return(paste0(round(p, 3), "*"))
+  return(as.character(round(p, 3)))
+}
+
+# Create tables with formatted p-values
+summary_p_values1_table <- summary_p_values1 %>%
+  mutate(
+    p_val_pre_mid = map_chr(p_val_pre_mid, format_pvalue),
+    p_val_pre_post = map_chr(p_val_pre_post, format_pvalue),
+    p_val_mid_post = map_chr(p_val_mid_post, format_pvalue)
+  )
+
+summary_p_values2_table <- summary_p_values2 %>%
+  mutate(
+    p_val_pre_mid = map_chr(p_val_pre_mid, format_pvalue),
+    p_val_pre_post = map_chr(p_val_pre_post, format_pvalue),
+    p_val_mid_post = map_chr(p_val_mid_post, format_pvalue)
+  )
+
+# Display tables with kableExtra for better formatting
+summary_p_values1_table %>%
+  kbl(caption = "Summary of strength measures with p-values") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  column_spec(1, bold = TRUE)
+
+summary_p_values2_table %>%
+  kbl(caption = "Trained Vs. Untrained Summary of strength measures with p-values") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(2, background = ifelse(summary_p_values2_table$TrainingStatus == "trained", "#e6f7ff", "#fff2e6"))
+
+# Save Excel files
+file_name_summary <- paste0(output_directory, "/", date, "strength_summary_pval.xlsx")
+write_xlsx(summary_p_values1, file_name_summary)
+
+file_name_summary_TvsU <- paste0(output_directory, "/", date, "strength_summary_TvsU_pval.xlsx")
+write_xlsx(summary_p_values2, file_name_summary_TvsU)
+
+# Compare trained vs untrained at each timepoint
+comparison_results <- mydata_long %>%
+  group_by(Measure_Exercise, Timepoint) %>%
+  summarize(
+    t_test = list(tryCatch(
+      t.test(Weight ~ TrainingStatus, data = cur_data()),
+      error = function(e) list(p.value = NA_real_)
+    )),
+    p_value = t_test[[1]]$p.value,
+    .groups = 'drop'
+  ) %>%
+  select(Measure_Exercise, Timepoint, p_value)
+
+# View significant differences
+TvsU <- comparison_results %>% 
+  filter(p_value < 0.1) %>%
+  mutate(significance = case_when(
+    p_value < 0.001 ~ "***",
+    p_value < 0.01 ~ "**",
+    p_value < 0.05 ~ "*",
+    TRUE ~ "\u2020"  # Unicode dagger symbol for p < 0.1
+  ))
+if(nrow(TvsU) > 0) {
+  TvsU %>%
+    kbl(
+      digits = 3, 
+      caption = "Differences between trained and untrained (p < 0.1)",
+      col.names = c("Measure", "Timepoint", "p-value", "Significance")
+    ) %>%
+    kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+}
+# Plot example for benchpress10rm
+benchpress_data <- mydata_long %>%
+  filter(Measure_Exercise == "10RM_Bench Press", TrainingStatus == "trained")
+
+if(nrow(benchpress_data) > 0) {
+  plot_data <- benchpress_data %>%
+    group_by(Timepoint) %>%
+    summarize(
+      Mean = mean(Weight, na.rm = TRUE),
+      SD = sd(Weight, na.rm = TRUE),
+      .groups = 'drop'
+    )
+  # Define the order of the x-axis
+  timepoint_order <- c("PRE", "MID", "POST")
+  
+  # Create basic ggplot2 plot to avoid potential ggpubr issues
+  benchpress10rm_plot <- ggplot(plot_data, aes(x = factor(Timepoint, levels = timepoint_order), y = Mean)) +
+    geom_errorbar(aes(ymin = Mean - SD, ymax = Mean + SD), width = 0.2, color = "black") +
+    geom_bar(stat = "identity", fill = "lightblue", color = "black", width = 0.7) +
+    labs(title = "BenchPress 10RM in Trained",
+         x = "Timepoint",
+         y = "Weight (kg)") +
+    theme_pubr() +
+    theme(
+      panel.grid.major = element_blank(),
+      panel.grid.minor = element_blank(),
+      axis.title = element_text(face = "bold")
+    )
+    print(benchpress10rm_plot)
+}
+```
+
+## Interpretation of Strength Training Results
+
+The analysis reveals several important findings about the effects of our resistance training program on strength measures across different exercises, comparing trained versus untrained individuals.
+
+### Overall Strength Improvements
+
+All strength measures showed significant improvements over the training period. For the combined group analysis:
+
+- Every exercise showed significant increases from PRE to POST (p < 0.01 for all measures)
+- Most exercises showed significant improvements between all timepoints (PRE-MID, MID-POST, and PRE-POST)
+- The effect sizes (Hedge's g) for PRE to POST changes were substantial, ranging from moderate (0.49 for 1RM Bench Press) to large (1.54 for 10RM Deadlift)
+
+### Trained vs. Untrained Comparisons
+
+When comparing trained vs. untrained participants:
+
+1. Similar patterns of improvement were observed in both groups, with most exercises showing significant increases across timepoints
+2. Effect sizes were generally larger in trained individuals, particularly for:
+   - 10RM Deadlift (trained g=2.37 vs. untrained g=1.13)
+   - 10RM Leg Press (trained g=2.09 vs. untrained g=0.92)
+   - 10RM OHP (trained g=2.07 vs. untrained g=0.62)
+
+3. Differential timing of adaptations:
+   - Trained individuals often showed larger gains in the early phase (PRE-MID)
+   - Some exercises (e.g., 1RM Bench Press, 1RM OHP) showed significant PRE-POST improvements in untrained individuals while trained individuals had p-values approaching but not reaching significance
+
+4. Between-group differences were minimal, with only three exercises showing marginally significant differences (p < 0.1) between groups:
+   - 10RM Lat Pull (MID and POST)
+   - 1RM Lat Pull (POST)
+
+### Exercise-Specific Findings
+
+1. Deadlift showed particularly large improvements in both groups, especially for 10RM measures
+2. Bench Press showed consistent improvements but with smaller effect sizes compared to other exercises
+3. Overhead Press (OHP) showed notably different responses between trained and untrained groups
+4. Lat Pull was one of the few exercises showing marginally significant differences between trained and untrained individuals
+
+### Physiological Implications
+
+The continued adaptations throughout the training period suggest that both trained and untrained individuals were responsive to the program. Higher relative gains in trained individuals for some exercises challenges the common assumption that untrained individuals always show greater relative improvements. The similar patterns of adaptation suggest that the underlying physiological mechanisms for strength gain may be consistent regardless of training status.
+
+### Practical Applications
+
+The program was effective for both trained and untrained individuals, making it suitable for mixed-experience groups. The continued improvements from MID to POST indicate that the program duration was appropriate for eliciting ongoing adaptations. The differences in effect sizes between exercises suggest that some movements (especially deadlifts) may be particularly responsive to training.
+
+
+
+<!-- #### Bench press couldn't perform T-test because data were essentially constant  -->
+
+# Step 3: Calculate percent change
+
+
+
+
+
+
+
+
+```{r Percent Change, echo=FALSE}
+# Define a function to calculate percent change
+calculate_percent_change <- function(pre, mid, post) {
+  data.frame(
+    PRE_to_MID = ((mid - pre) / pre) * 100,
+    MID_to_POST = ((post - mid) / mid) * 100,
+    PRE_to_POST = ((post - pre) / pre) * 100  )}
+
+# First Stage: Calculating mean and percent change
+percent_change_summary <- mydata %>%
+  filter(Exercise != "Bent Row") %>%
+  group_by(Measure, Exercise) %>%
+  summarise(
+    PRE_Mean = mean(PRE, na.rm = TRUE),
+    MID_Mean = mean(MID, na.rm = TRUE),
+    POST_Mean = mean(POST, na.rm = TRUE),
+    percent_change = list(calculate_percent_change(PRE_Mean, MID_Mean, POST_Mean)),
+    .groups = "drop"
+  ) %>%
+  unnest(percent_change)
+
+percent_change_by_upperlower <- mydata %>%
+  mutate(Exercise_Type = ifelse(Exercise %in% upper_exercises, "Upper", "Lower")) %>%
+  group_by(Measure, Exercise_Type) %>%
+  summarise(
+    PRE_Mean = mean(PRE, na.rm = TRUE),
+    MID_Mean = mean(MID, na.rm = TRUE),
+    POST_Mean = mean(POST, na.rm = TRUE),
+    percent_change = list(calculate_percent_change(PRE_Mean, MID_Mean, POST_Mean)),
+    .groups = "drop"
+  ) %>%
+  unnest(percent_change)
+
+percent_change_per_subject_upperlower <- mydata %>%
+  mutate(Exercise_Type = ifelse(Exercise %in% upper_exercises, "Upper", "Lower")) %>%
+  group_by(Subject, Measure, Exercise_Type) %>%  # Include Subject here
+  summarise(
+    PRE = mean(PRE, na.rm = TRUE),
+    MID = mean(MID, na.rm = TRUE),
+    POST = mean(POST, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(percent_change = list(calculate_percent_change(PRE, MID, POST))) %>%
+  unnest(percent_change)
+
+percent_change_summary_with_pvalues_upperlower <- percent_change_per_subject_upperlower %>%
+  # filter(Exercise != "Bent Row") %>%
+  group_by(Measure, Exercise_Type) %>%
+  summarise(
+    p_val_pre_mid = t.test(PRE_to_MID, MID_to_POST, paired = TRUE, na.rm = TRUE)$p.value,
+    p_val_pre_post = t.test(PRE_to_MID, PRE_to_POST, paired = TRUE, na.rm = TRUE)$p.value,
+    p_val_mid_post = t.test(MID_to_POST, PRE_to_POST, paired = TRUE, na.rm = TRUE)$p.value,
+    PRE_Mean_SD = sprintf("%.2f±%.2f", mean(PRE_to_MID, na.rm = TRUE), sd(PRE_to_MID, na.rm = TRUE)),
+    MID_Mean_SD = sprintf("%.2f±%.2f", mean(MID_to_POST, na.rm = TRUE), sd(MID_to_POST, na.rm = TRUE)),
+    POST_Mean_SD = sprintf("%.2f±%.2f", mean(PRE_to_POST, na.rm = TRUE), sd(PRE_to_POST, na.rm = TRUE)),
+    .groups = "drop"
+  )
+
+percent_change_per_subject <- mydata %>%
+  filter(Exercise != "Bent Row") %>%
+  group_by(Subject, Measure, Exercise) %>%  # Include Subject here
+  summarise(
+    PRE = mean(PRE, na.rm = TRUE),
+    MID = mean(MID, na.rm = TRUE),
+    POST = mean(POST, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(percent_change = list(calculate_percent_change(PRE, MID, POST))) %>%
+  unnest(percent_change)
+
+min_max_values <- percent_change_per_subject %>%
+  group_by(Measure, Exercise) %>%
+  summarise(
+    Min_PRE_to_MID = min(PRE_to_MID, na.rm = TRUE),
+    Max_PRE_to_MID = max(PRE_to_MID, na.rm = TRUE),
+    Min_MID_to_POST = min(MID_to_POST, na.rm = TRUE),
+    Max_MID_to_POST = max(MID_to_POST, na.rm = TRUE),
+    Min_PRE_to_POST = min(PRE_to_POST, na.rm = TRUE),
+    Max_PRE_to_POST = max(PRE_to_POST, na.rm = TRUE),
+    .groups = "drop"
+  )
+# Second Stage: Calculating p-values and Mean±SD
+percent_change_summary_with_pvalues <- percent_change_per_subject %>%
+  filter(Exercise != "Bent Row") %>%
+  group_by(Measure, Exercise) %>%
+  summarise(
+    p_val_pre_mid = t.test(PRE_to_MID, MID_to_POST, paired = TRUE, na.rm = TRUE)$p.value,
+    p_val_pre_post = t.test(PRE_to_MID, PRE_to_POST, paired = TRUE, na.rm = TRUE)$p.value,
+    p_val_mid_post = t.test(MID_to_POST, PRE_to_POST, paired = TRUE, na.rm = TRUE)$p.value,
+    PRE_Mean_SD = sprintf("%.2f±%.2f", mean(PRE_to_MID, na.rm = TRUE), sd(PRE_to_MID, na.rm = TRUE)),
+    MID_Mean_SD = sprintf("%.2f±%.2f", mean(MID_to_POST, na.rm = TRUE), sd(MID_to_POST, na.rm = TRUE)),
+    POST_Mean_SD = sprintf("%.2f±%.2f", mean(PRE_to_POST, na.rm = TRUE), sd(PRE_to_POST, na.rm = TRUE)),
+    .groups = "drop"
+  )
+# Merge the tables using left_join
+merged_summary <- left_join(percent_change_summary, percent_change_summary_with_pvalues,
+                            by = c("Measure", "Exercise"))
+
+file_name <- paste0(output_directory, "/", date, "Strength_percent_change_summary.xlsx")
+write_xlsx(merged_summary, file_name)
+file_name <- paste0(output_directory, "/", date, "_per_subject_Strength_percent_change_summary.xlsx")
+write_xlsx(percent_change_per_subject, file_name)
+
+# First Stage: Calculating mean and percent change
+percent_change_summary_TvsU <- mydata %>%
+  filter(Exercise != "Bent Row") %>%
+  group_by(Measure, Exercise, TrainingStatus) %>%
+  summarise(
+    PRE_Mean = mean(PRE, na.rm = TRUE),
+    MID_Mean = mean(MID, na.rm = TRUE),
+    POST_Mean = mean(POST, na.rm = TRUE),
+    percent_change = list(calculate_percent_change(PRE_Mean, MID_Mean, POST_Mean)),
+    .groups = "drop"
+  ) %>%
+  unnest(percent_change)
+
+percent_change_by_upperlower <- mydata %>%
+  mutate(Exercise_Type = ifelse(Exercise %in% upper_exercises, "Upper", "Lower")) %>%
+  group_by(Measure, Exercise_Type, TrainingStatus) %>%
+  summarise(
+    PRE_Mean = mean(PRE, na.rm = TRUE),
+    MID_Mean = mean(MID, na.rm = TRUE),
+    POST_Mean = mean(POST, na.rm = TRUE),
+    percent_change = list(calculate_percent_change(PRE_Mean, MID_Mean, POST_Mean)),
+    .groups = "drop"
+  ) %>%
+  unnest(percent_change)
+
+percent_change_per_subject_upperlower <- mydata %>%
+  mutate(Exercise_Type = ifelse(Exercise %in% upper_exercises, "Upper", "Lower")) %>%
+  group_by(Subject, Measure, Exercise_Type, TrainingStatus) %>%  # Include Subject here
+  summarise(
+    PRE = mean(PRE, na.rm = TRUE),
+    MID = mean(MID, na.rm = TRUE),
+    POST = mean(POST, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(percent_change = list(calculate_percent_change(PRE, MID, POST))) %>%
+  unnest(percent_change)
+
+percent_change_summary_with_pvalues_upperlower_TvsU <- percent_change_per_subject_upperlower %>%
+  # filter(Exercise != "Bent Row") %>%
+  group_by(Measure, Exercise_Type, TrainingStatus) %>%
+  summarise(
+    p_val_pre_mid = t.test(PRE_to_MID, MID_to_POST, paired = TRUE, na.rm = TRUE)$p.value,
+    p_val_pre_post = t.test(PRE_to_MID, PRE_to_POST, paired = TRUE, na.rm = TRUE)$p.value,
+    p_val_mid_post = t.test(MID_to_POST, PRE_to_POST, paired = TRUE, na.rm = TRUE)$p.value,
+    PRE_Mean_SD = sprintf("%.2f±%.2f", mean(PRE_to_MID, na.rm = TRUE), sd(PRE_to_MID, na.rm = TRUE)),
+    MID_Mean_SD = sprintf("%.2f±%.2f", mean(MID_to_POST, na.rm = TRUE), sd(MID_to_POST, na.rm = TRUE)),
+    POST_Mean_SD = sprintf("%.2f±%.2f", mean(PRE_to_POST, na.rm = TRUE), sd(PRE_to_POST, na.rm = TRUE)),
+    .groups = "drop"
+  )
+
+percent_change_per_subject_TvsU <- mydata %>%
+  filter(Exercise != "Bent Row") %>%
+  group_by(Subject, Measure, Exercise, TrainingStatus) %>%  # Include Subject here
+  summarise(
+    PRE = mean(PRE, na.rm = TRUE),
+    MID = mean(MID, na.rm = TRUE),
+    POST = mean(POST, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  rowwise() %>%
+  mutate(percent_change = list(calculate_percent_change(PRE, MID, POST))) %>%
+  unnest(percent_change)
+
+min_max_values <- percent_change_per_subject_TvsU %>%
+  group_by(Measure, Exercise, TrainingStatus) %>%
+  summarise(
+    Min_PRE_to_MID = min(PRE_to_MID, na.rm = TRUE),
+    Max_PRE_to_MID = max(PRE_to_MID, na.rm = TRUE),
+    Min_MID_to_POST = min(MID_to_POST, na.rm = TRUE),
+    Max_MID_to_POST = max(MID_to_POST, na.rm = TRUE),
+    Min_PRE_to_POST = min(PRE_to_POST, na.rm = TRUE),
+    Max_PRE_to_POST = max(PRE_to_POST, na.rm = TRUE),
+    .groups = "drop"
+  )
+# Second Stage: Calculating p-values and Mean±SD
+percent_change_summary_with_pvalues_TvsU <- percent_change_per_subject_TvsU %>%
+  filter(Exercise != "Bent Row") %>%
+  group_by(Measure, Exercise, TrainingStatus) %>%
+  summarise(
+    p_val_pre_mid = t.test(PRE_to_MID, MID_to_POST, paired = TRUE, na.rm = TRUE)$p.value,
+    p_val_pre_post = t.test(PRE_to_MID, PRE_to_POST, paired = TRUE, na.rm = TRUE)$p.value,
+    p_val_mid_post = t.test(MID_to_POST, PRE_to_POST, paired = TRUE, na.rm = TRUE)$p.value,
+    PRE_Mean_SD = sprintf("%.2f±%.2f", mean(PRE_to_MID, na.rm = TRUE), sd(PRE_to_MID, na.rm = TRUE)),
+    MID_Mean_SD = sprintf("%.2f±%.2f", mean(MID_to_POST, na.rm = TRUE), sd(MID_to_POST, na.rm = TRUE)),
+    POST_Mean_SD = sprintf("%.2f±%.2f", mean(PRE_to_POST, na.rm = TRUE), sd(PRE_to_POST, na.rm = TRUE)),
+    .groups = "drop"
+  )
+# Merge the tables using left_join
+merged_summary <- left_join(percent_change_summary_TvsU, percent_change_summary_with_pvalues_TvsU,
+                            by = c("Measure", "Exercise", "TrainingStatus"))
+
+pivot_summary <- percent_change_per_subject_TvsU %>%
+  pivot_longer(cols = c(PRE_to_MID, MID_to_POST, PRE_to_POST),
+               names_to = "Timepoint", values_to = "Value")
+
+# Now perform the comparison
+comparison_results <- pivot_summary %>%
+  group_by(Measure, Exercise, Timepoint) %>%
+  do(tidy(t.test(Value ~ TrainingStatus, data = .))) %>%
+  ungroup() %>%
+  select(Measure, Exercise, Timepoint, p.value)
+# View the results
+TvsU <- filter(comparison_results, p.value < 0.1)
+kable(TvsU, digits = 3, caption = "T-test results for TrainingStatus")
+
+file_name <- paste0(output_directory, "/", date, "TvsU_percent_change_summary.xlsx")
+write_xlsx(merged_summary, file_name)
+
+file_name <- paste0(output_directory, "/", date, "_TvsU_per_subject_Strength_percent_change_summary.xlsx")
+write_xlsx(percent_change_per_subject, file_name)
+```
+
+## Analysis of Percent Changes in Strength Measures
+
+The percent change analysis provides valuable insights into the magnitude and timing of strength adaptations across different exercises and between trained and untrained participants.
+
+### Overall Percent Changes
+
+Across all participants, substantial improvements in strength were observed:
+
+- **10RM measures** showed greater overall percent increases (25.7-45.1%) compared to **1RM measures** (17.9-42.1%)
+- **Deadlift** exhibited the largest percent increases for both 10RM (45.1%) and 1RM (42.1%) measures
+- **Bench Press** showed the smallest percent increases for both 10RM (25.7%) and 1RM (17.9%) measures
+- For most exercises, the **PRE to MID** phase showed larger percent increases than the **MID to POST** phase, suggesting a slight diminishing rate of adaptation over time
+
+### Trained vs. Untrained Comparisons
+
+The data revealed interesting patterns when comparing trained vs. untrained individuals:
+
+1. **Lower body exercises:**
+   - Trained individuals showed substantially greater PRE to MID improvements in 1RM Leg Press compared to untrained (32.9% vs. 11.3%)
+   - For 10RM lower body exercises, trained and untrained individuals showed remarkably similar percent improvements (24.6% vs. 24.8%)
+
+2. **Upper body exercises:**
+   - Trained individuals demonstrated larger improvements in upper body exercises for both 10RM (24.9% vs. 19.4%) and 1RM (20.6% vs. 11.3%)
+   - The 1RM Lat Pull showed a pronounced difference between trained and untrained (17.1% vs. 9.5% for PRE to MID, and 32.9% vs. 17.5% overall)
+
+3. **Exercise-specific differences:**
+   - 10RM Seated Row showed the largest disparity between trained and untrained for overall improvement (51.5% vs. 32.2%)
+   - 1RM Leg Press showed significantly different adaptation patterns, with trained individuals gaining more in the early phase, while untrained individuals showed greater improvements in the later phase
+
+### Individual Variability
+
+The minimum and maximum values reveal considerable individual variability in responses:
+
+- Some individuals showed no improvement (0%) during certain phases, while others demonstrated increases exceeding 100% in extreme cases
+- The range of responses was particularly large for 10RM measures, with maximum values as high as 133.3% (10RM Seated Row in untrained individuals)
+- Even within trained individuals, the range of responses was substantial, with maximum values for PRE to POST changes ranging from 29.6% to 118.5%
+
+### Statistical Significance
+
+The p-values for percent changes highlight:
+
+- Most exercises showed statistically significant improvements from PRE to POST in both groups
+- The significance of MID to POST changes varied more across exercises, suggesting different patterns of continued adaptation
+- Significant p-values were more consistent in trained individuals for upper body exercises
+
+### Practical Implications
+
+These findings have several practical implications for resistance training program design:
+
+1. Both trained and untrained individuals can achieve substantial strength gains, but the pattern and magnitude may differ
+2. Upper body exercises may require different programming approaches for trained vs. untrained individuals
+3. Lower body adaptations appear more consistent between training status groups
+4. Individual response variability suggests the importance of personalized monitoring and adjustment of training programs
+
+The data challenges the common assumption that untrained individuals will always show greater relative improvements, particularly for upper body exercises where trained individuals often demonstrated larger percent gains.
+
+```{r Percent Change1, echo=FALSE}
+kable(percent_change_summary, caption = "Percent change summary", digits = 3)
+kable(percent_change_summary_with_pvalues, caption = "Percent change summary with p-values", digits = 3)
+kable(percent_change_by_upperlower, caption = "Percent change by upper and lower exercises", digits = 3)
+kable(percent_change_summary_TvsU, caption = "Percent change summary for TrainingStatus", digits = 3)
+kable(percent_change_summary_with_pvalues_TvsU, caption = "Percent change summary with p-values for TrainingStatus", digits = 3)
+kable(percent_change_summary_with_pvalues_upperlower_TvsU, caption = "Percent change summary with p-values for upper and lower exercises for TrainingStatus", digits = 3)
+kable(min_max_values, caption = "Min and Max values for percent change", digits = 3)
+```
+
+
+
+```{r Plotting 10rm, echo=FALSE, warnings=FALSE, message=FALSE}
+# Read in the Excel file and perform all transformations in a single pipeline
+mydata <- read_excel("MRP.xlsx", sheet = "Strength", col_names = TRUE) %>%
+  select(1:3, 7:9) %>%
+  rename(Subject = 1, Measure = 2, Exercise = 3, PRE = 4, MID = 5, POST = 6) %>%
+  filter(!(Subject %in% c("SUB 5", "SUB 13"))) %>%
+  mutate(
+    PRE = as.numeric(PRE),
+    MID = as.numeric(MID),
+    POST = as.numeric(POST)
+  )
+
+# Create a new dataframe with 1RM data only, filtering out "Bent Over Row" and removing the Measure column
+mydata_1rm <- mydata %>%
+  filter(Exercise != "Bent Over Row", str_detect(Measure, "1RM")) %>%
+  select(-Measure)
+mydata_1rm$Exercise <- dplyr::recode(mydata_1rm$Exercise, !!!replacements)
+# Create a new dataframe with 10RM data only, filtering out "Bent Over Row" and removing the Measure column
+mydata_10rm <- mydata %>%
+  filter(Exercise != "Bent Over Row", str_detect(Measure, "10RM")) %>%
+  select(-Measure)
+mydata_10rm$Exercise <- dplyr::recode(mydata_10rm$Exercise, !!!replacements)
+
+# Calculate means and standard deviations for each exercise and time point
+mydata_10rm_summary <- mydata_10rm %>%
+  group_by(Exercise) %>%
+  summarise(across(
+    c(PRE, MID, POST),
+    list(Mean = mean, SD = sd), # Capitalize the Mean here
+    .names = "{.col}_{.fn}")  )
+
+# Reshape the data into a longer format
+mydata_10rm_summary_long <- mydata_10rm_summary %>%
+  pivot_longer(
+    cols = c(PRE_Mean:POST_SD), # Update column names to match the new pattern
+    names_to = c("Time", ".value"),
+    names_pattern = "(PRE|MID|POST)_(.*)"
+  )
+
+#reorder so that the plot displays in order of magnitude and pre mid post.
+mydata_10rm_summary_long <- mydata_10rm_summary_long %>%
+  mutate(Exercise = reorder(Exercise, -Mean))
+mydata_10rm_summary_long$Time <- factor(mydata_10rm_summary_long$Time, levels = c("PRE", "MID", "POST"))
+
+
+# create a vector indicating which bars are significantly different
+sig_diff_rm10s <- c(F, T, T, F, T, T, F, T, T, F, T, T, F, T, T, F, T, T)
+
+# plot with markers for significant differences COLOR
+rm10splot <- ggplot(mydata_10rm_summary_long, aes(x = Exercise, y = Mean, fill = Time)) +
+  geom_errorbar(aes(ymin = Mean - SD, ymax = Mean + SD),
+                position = position_dodge(width = 0.9), width = 0.2) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.9) +
+  geom_text(aes(y = Mean + SD + 2, label = ifelse(sig_diff_rm10s, "*", "")),
+            position = position_dodge(width = 0.9), size = 10) +
+  labs(x = "", y = "10RM (kg)", fill = "Time") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +  # Apply custom fill colors
+  scale_y_continuous(limits = c(0, 165),
+                     breaks = seq(0, 160, 20),
+                     minor_breaks = seq(0, 160, 10),
+                     expand = c(0, 0)) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = c(0.85, 0.8),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank(),
+        text = element_text(size = 12),          # Set font size for general text
+        axis.title = element_text(size = 12, color = "black"),    # Set font size for axis titles
+        axis.text = element_text(size = 11, color = "black"),     # Set font size for axis text
+        legend.title = element_text(size = 12),  # Set font size for legend title
+        legend.text = element_text(size = 12))   # Set font size for legend text))
+
+# Save the plot to a png file at 1200 dpi
+file_name_plot <- paste0(output_directory, "/", date, "_COLOR_10rm_plot_sig.png")
+ggsave(file_name_plot, plot = rm10splot, width = 6, height = 4, dpi = 1200)
+print(rm10splot)
+```
+
+```{r plotting 1rm, echo=FALSE, warning=FALSE, message=FALSE}
+# Calculate means and standard deviations for each exercise and time point
+mydata_1rm_summary <- mydata_1rm %>%
+  group_by(Exercise) %>%
+  summarise(across(
+    c(PRE, MID, POST),
+    list(Mean = mean, SD = sd), # Capitalize the Mean here
+    .names = "{.col}_{.fn}")
+  )
+# Reshape the data into a longer format
+mydata_1rm_summary_long <- mydata_1rm_summary %>%
+  pivot_longer(
+    cols = c(PRE_Mean:POST_SD), # Update column names to match the new pattern
+    names_to = c("Time", ".value"),
+    names_pattern = "(PRE|MID|POST)_(.*)"
+  )
+# Reorder so that the plot displays in order of magnitude and PRE, MID, POST.
+mydata_1rm_summary_long <- mydata_1rm_summary_long %>%
+  mutate(Exercise = reorder(Exercise, -Mean))
+mydata_1rm_summary_long$Time <- factor(mydata_1rm_summary_long$Time, levels = c("PRE", "MID", "POST"))
+
+# create a vector indicating which bars are significantly different
+sig_diff_rm1s <- c(F, T, T, F, T, T, F, T, T, F, T, T, F, T, T, F, T, T)
+  # plot with markers for significant differences
+  rm1splot <- ggplot(mydata_1rm_summary_long, aes(x = Exercise, y = Mean, fill = Time)) +
+  geom_errorbar(aes(ymin = Mean - SD, ymax = Mean + SD),
+                position = position_dodge(width = 0.9), width = 0.2) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.9) +
+  geom_text(aes(y = Mean + SD + 2, label = ifelse(sig_diff_rm1s, "*", "")),
+            position = position_dodge(width = 0.9), size = 10) +
+  labs(x = "", y = "1RM (kg)", fill = "Time") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_y_continuous(limits = c(0, 165),
+                     breaks = seq(0, 160, 20),
+                     minor_breaks = seq(0, 160, 10),
+                     expand = c(0, 0)) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = c(0.85, 0.8),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank(),
+        text = element_text(size = 12),          # Set font size for general text
+        axis.title = element_text(size = 12, color= "black"),    # Set font size for axis titles
+        axis.text = element_text(size = 11, color = "black"),     # Set font size for axis text
+        legend.title = element_text(size = 12),  # Set font size for legend title
+        legend.text = element_text(size = 12))   # Set font size for legend text))
+
+# Save the plot to a png file at 1200 dpi
+file_name_plot <- paste0(output_directory, "/", date, "_COLOR_1rm_plot_sig.png")
+ggsave(file_name_plot, plot = rm1splot, width = 6, height = 4, dpi = 1200)
+print(rm1splot)
+```
+
+
+
+```{r plotting, echo=FALSE, warning=FALSE, message=FALSE}
+# Calculate mean and standard deviation for the specified columns
+summary_data <- percent_change_per_subject_TvsU %>%
+  group_by(Measure, TrainingStatus) %>%
+  summarize(
+    mean_PRE_to_MID = mean(PRE_to_MID),
+    sd_PRE_to_MID = sd(PRE_to_MID),
+    mean_MID_to_POST = mean(MID_to_POST),
+    sd_MID_to_POST = sd(MID_to_POST),
+    mean_PRE_to_POST = mean(PRE_to_POST),
+    sd_PRE_to_POST = sd(PRE_to_POST)
+  )
+# Subset rows with "1RM" in the Measure column and retain TrainingStatus
+measures_1RM <- summary_data %>%
+  filter(str_detect(Measure, "1RM")) %>%
+  mutate(Measure = str_replace(Measure, "_1RM", "")) # Remove "_1RM" suffix
+# Create a new column for asterisks
+measures_1RM$Asterisk <- ifelse((measures_1RM$Measure == "OHP" & measures_1RM$TrainingStatus == "trained") |
+                                  (measures_1RM$Measure == "Seated Row" & measures_1RM$TrainingStatus == "untrained"), "", "*")
+# Reorder the factor levels for the 'TrainingStatus' column
+measures_1RM$TrainingStatus <- factor(measures_1RM$TrainingStatus, levels = c("untrained", "trained"))
+
+# Reorder factor levels for Exercise variable
+exercise_order <- c("Leg Press", "Deadlift", "Seated Row", "Lat Pull", "Bench Press", "OHP")
+measures_1RM$Measure <- factor(measures_1RM$Measure, levels = exercise_order)
+
+# Plot with markers for significant differences
+plot_1RM_with_asterisks <- ggplot(measures_1RM, aes(x = Measure, y = mean_PRE_to_POST, fill = TrainingStatus)) +
+  geom_errorbar(aes(ymin = mean_PRE_to_POST - sd_PRE_to_POST, ymax = mean_PRE_to_POST + sd_PRE_to_POST),
+                position = position_dodge(width = 0.9), width = 0.2) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.9) +
+  geom_text(aes(y = mean_PRE_to_POST + sd_PRE_to_POST + 2, label = Asterisk), size = 10, color = "black",
+            position = position_dodge(width = 0.9)) +
+  labs(x = "", y = "1RM %Δ", fill = "Training Status") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color)) +  # Apply custom fill colors
+  scale_y_continuous(limits = c(0, 130),
+                     breaks = seq(0, 120, 20),
+                     minor_breaks = seq(0, 120, 10),
+                     expand = c(0, 0)) +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = c(0.85, 0.8),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank(),
+        text = element_text(size = 12),          # Set font size for general text
+        axis.title = element_text(size = 12, color = "black"),    # Set font size for axis titles
+        axis.text = element_text(size = 11, color = "black"),     # Set font size for axis text
+        legend.title = element_text(size = 12),  # Set font size for legend title
+        legend.text = element_text(size = 12))   # Set font size for legend text))
+
+# Subset rows with "10RM" in the Measure column and retain TrainingStatus
+measures_10RM <- summary_data %>%
+  filter(str_detect(Measure, "10RM")) %>%
+  mutate(Measure = str_replace(Measure, "_10RM", "")) # Remove "_10RM" suffix
+# Reorder the factor levels for the 'TrainingStatus' column
+measures_10RM$TrainingStatus <- factor(measures_1RM$TrainingStatus, levels = c("untrained", "trained"))
+
+# Create a new column for asterisks
+measures_10RM$Asterisk <- ifelse((measures_1RM$Measure == "Bench Press" & measures_1RM$TrainingStatus == "trained") |
+                                  (measures_1RM$Measure == "" & measures_1RM$TrainingStatus == "untrained"), "", "*")
+# Reorder factor levels for Exercise variable
+exercise_order <- c("Leg Press", "Deadlift", "Seated Row", "Lat Pull", "Bench Press",  "OHP")
+measures_10RM$Measure <- factor(measures_10RM$Measure, levels = exercise_order)
+
+# Plot with markers for significant differences
+plot_10RM_with_asterisks <- ggplot(measures_10RM, aes(x = Measure, y = mean_PRE_to_POST, fill = TrainingStatus)) +
+  geom_errorbar(aes(ymin = mean_PRE_to_POST - sd_PRE_to_POST, ymax = mean_PRE_to_POST + sd_PRE_to_POST),
+                position = position_dodge(width = 0.9), width = 0.2) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.9) +
+  geom_text(aes(y = mean_PRE_to_POST + sd_PRE_to_POST + 2, label = Asterisk), size = 10, color = "black",
+            position = position_dodge(width = 0.9)) +
+  labs(x = "", y = "10RM %Δ", fill = "Training Status") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color)) +  # Apply custom fill colors
+  theme_minimal() +
+  scale_y_continuous(limits = c(0, 130),
+                     breaks = seq(0, 120, 20),
+                     minor_breaks = seq(0, 120, 10),
+                     expand = c(0, 0)) +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = c(0.85, 0.8),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank(),
+        text = element_text(size = 12),          # Set font size for general text
+        axis.title = element_text(size = 12, color = "black"),    # Set font size for axis titles
+        axis.text = element_text(size = 11, color = "black"),     # Set font size for axis text
+        legend.title = element_text(size = 12),  # Set font size for legend title
+        legend.text = element_text(size = 12))   # Set font size for legend text))
+```
+
+![10RM Plot](02212024_output/02212024_SIG_10RM_plot_TvsU.png)
+![1RM Plot ](02212024_output/02212024_SIG_1RM_plot_TvsU.png)
+
+```{r Plot 1RM and 10RM faceted by TrainingStatus, echo=FALSE, warning=FALSE, message=FALSE}
+# Read in the Excel file and perform all transformations in a single pipeline
+mydata <- read_excel("MRP.xlsx", sheet = "Strength", col_names = TRUE) %>%
+ dplyr::select(1:3, 7:9) %>%
+  rename(Subject = 1, Measure = 2, Exercise = 3, PRE = 4, MID = 5, POST = 6) %>%
+  filter(!(Subject %in% c("SUB 5", "SUB 13"))) %>%
+  mutate(
+    PRE = as.numeric(PRE),
+    MID = as.numeric(MID),
+    POST = as.numeric(POST)
+  )
+# Apply the replacements to the Exercise column
+mydata$Exercise <- dplyr::recode(mydata$Exercise, !!!replacements)
+
+# Add a new column "TrainingStatus" based on the subjects
+mydata <- mydata %>%
+  mutate(TrainingStatus = ifelse(Subject %in% trained_subjects, "trained", "untrained"))
+# Remove BentRow entries from mydata
+mydata <- mydata[mydata$Measure != "BentRow_1RM" & mydata$Measure != "BentRow_10RM", ]
+mydata <- mydata %>%
+  filter(Exercise != "Bent Row")
+
+#Filter 10rm and 1rm to new tables
+# Function to summarize and reshape the data
+summarize_and_reshape <- function(data) {
+  summary <- data %>%
+    group_by(Exercise) %>%
+    summarise(across(
+      c(PRE, MID, POST),
+      list(Mean = mean, SD = sd),
+      .names = "{.col}_{.fn}")
+    )
+
+  summary_long <- summary %>%
+    pivot_longer(
+      cols = c(PRE_Mean:POST_SD),
+      names_to = c("Time", ".value"),
+      names_pattern = "(PRE|MID|POST)_(.*)"
+    ) %>%
+    mutate(Exercise = reorder(Exercise, -Mean),
+           Time = factor(Time, levels = c("PRE", "MID", "POST")))
+  return(summary_long)
+}
+# Filter 10rm and 1rm to new tables and apply the function
+mydata_1rm_T <- mydata %>% filter(Measure == "1RM" & TrainingStatus == "trained") %>% summarize_and_reshape()
+mydata_1rm_U <- mydata %>% filter(Measure == "1RM" & TrainingStatus == "untrained") %>% summarize_and_reshape()
+mydata_10rm_T <- mydata %>% filter(Measure == "10RM" & TrainingStatus == "trained") %>% summarize_and_reshape()
+mydata_10rm_U <- mydata %>% filter(Measure == "10RM" & TrainingStatus == "untrained") %>% summarize_and_reshape()
+
+# create a vector indicating which bars are significantly different
+sig_diff_1rm_T <- c(F,F,T,F,T,T,F,T,T,F,T,T,F,F,F,F,T,T)
+#(BP, DL, LAT, LP ,OHP,SR)
+# plot with markers for significant differences
+rm1_T_plot <-
+  ggplot(mydata_1rm_T, aes(x = Exercise, y = Mean, fill = Time)) +
+  geom_errorbar(aes(ymin = Mean - SD, ymax = Mean + SD),
+                position = position_dodge(width = 0.9), width = 0.2) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.9) +
+  geom_text(aes(y = Mean + SD + 2, label =ifelse(sig_diff_1rm_T, "*", "")),
+            position = position_dodge(width = 0.9), size = 10) +
+  labs(x = "Trained", y = "1RM (kg)", fill = "Time") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+
+  scale_y_continuous(limits = c(0, 165),
+                     breaks = seq(0, 160, 20),
+                     minor_breaks = seq(0, 160, 10),
+                     expand = c(0, 0)) +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = c(0.85, 0.8),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+
+# Save the plot to a png file at 1200 dpi
+file_name_plot <- paste0(output_directory, "/", date, "1rm_T_plot_sig.png")
+ggsave(file_name_plot, plot = rm1_T_plot, width = 6, height = 4, dpi = 1200)
+
+sig_diff_1rm_U <- c(F,T,T,F,T,T,F,T,T,F,F,T,F,F,T,F,F,F)
+#(BP, DL, LAT, LP ,OHP,SR)
+rm1_U_plot<-
+ggplot(mydata_1rm_U, aes(x = Exercise, y = Mean, fill = Time)) +
+  geom_errorbar(aes(ymin = Mean - SD, ymax = Mean + SD),
+                position = position_dodge(width = 0.9), width = 0.2) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.9) +
+  geom_text(aes(y = Mean + SD + 2, label = ifelse(sig_diff_1rm_U, "*", "")),
+            position = position_dodge(width = 0.9), size = 10) +
+  labs(x = "Untrained", y = "1RM (kg)", fill = "Time") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+
+  scale_y_continuous(limits = c(0, 165),
+                     breaks = seq(0, 160, 20),
+                     minor_breaks = seq(0, 160, 10),
+                     expand = c(0, 0)) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = c(0.85, 0.8),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+
+file_name_plot <- paste0(output_directory, "/", date, "1rm_U_plot_sig.png")
+ggsave(file_name_plot, plot = rm1_U_plot, width = 6, height = 4, dpi = 1200)
+
+# Combine the plots using plot_grid and include labels
+combined_plot <- plot_grid(rm1_U_plot, rm1_T_plot, nrow = 1)
+print(combined_plot)
+
+file_name_plot <- paste0(output_directory, "/", date, "1rm_TvsU_plot_sig.png")
+ggsave(file_name_plot, plot = combined_plot, width = 6, height = 4, dpi = 1200)
+
+# Reorder factor levels for Exercise variable
+exercise_order <- c("Leg Press", "Deadlift", "Seated Row", "Lat Pull", "Bench Press",  "OHP")
+mydata_10rm_T$Exercise <- factor(mydata_10rm_T$Exercise, levels = exercise_order)
+# create a vector indicating which bars are significantly different
+sig_diff_10rm_T <- c(F,F,F,F,T,T,F,F,T,F,T,T,F,F,T,F,T,T)
+#(BP, DL, LAT, LP ,OHP,SR)
+# plot with markers for significant differences
+rm10_T_plot <-
+  ggplot(mydata_10rm_T, aes(x = Exercise, y = Mean, fill = Time)) +
+  geom_errorbar(aes(ymin = Mean - SD, ymax = Mean + SD),
+                position = position_dodge(width = 0.9), width = 0.2) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.9) +
+  geom_text(aes(y = Mean + SD + 2, label =ifelse(sig_diff_10rm_T, "*", "")),
+            position = position_dodge(width = 0.9), size = 10) +
+  labs(x = "Trained", y = "10RM (kg)", fill = "Time") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_y_continuous(limits = c(0, 165),
+                     breaks = seq(0, 160, 20),
+                     minor_breaks = seq(0, 160, 10),
+                     expand = c(0, 0)) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = c(0.85, 0.8),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+# Save the plot to a png file at 1200 dpi
+file_name_plot <- paste0(output_directory, "/", date, "10rm_T_plot_sig.png")
+ggsave(file_name_plot, plot = rm10_T_plot, width = 6, height = 4, dpi = 1200)
+
+sig_diff_10rm_U <- c(F,T,T,F,T,T,F,T,T,F,T,T,F,F,T,F,T,T)
+#(BP, DL, LAT, LP ,OHP,SR)
+rm10_U_plot<-
+  ggplot(mydata_10rm_U, aes(x = Exercise, y = Mean, fill = Time)) +
+  geom_errorbar(aes(ymin = Mean - SD, ymax = Mean + SD),
+                position = position_dodge(width = 0.9), width = 0.2) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), width = 0.9) +
+  geom_text(aes(y = Mean + SD + 2, label = ifelse(sig_diff_10rm_U, "*", "")),
+            position = position_dodge(width = 0.9), size = 10) +
+  labs(x = "Untrained", y = "10RM (kg)", fill = "Time") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_y_continuous(limits = c(0, 165),
+                     breaks = seq(0, 160, 20),
+                     minor_breaks = seq(0, 160, 10),
+                     expand = c(0, 0)) +
+  theme_bw() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        legend.position = c(0.85, 0.8),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+
+file_name_plot <- paste0(output_directory, "/", date, "10rm_U_plot_sig.png")
+ggsave(file_name_plot, plot = rm10_U_plot, width = 6, height = 4, dpi = 1200)
+
+# Combine the plots using plot_grid and include labels
+combined_plot <- plot_grid(rm10_U_plot, rm10_T_plot, nrow = 1)
+
+# Display the combined plot
+print(combined_plot)
+file_name_plot <- paste0(output_directory, "/", date, "10rm_TvsU_plot_sig.png")
+ggsave(file_name_plot, plot = combined_plot, width = 6, height = 4, dpi = 1200)
+```
+
+# VO2 and other variables
+
+```{r VO2 and extra aov analysis  , echo=FALSE}
+# read in the data from the Excel file
+mydata <- read_excel("MRP.xlsx", sheet = "vo2data", col_names = TRUE)
+
+# Add a new column "TrainingStatus" based on the subjects
+mydata <- mydata %>%
+  mutate(TrainingStatus = ifelse(Subject %in% trained_subjects, "trained", "untrained"))
+
+# Create a list of measures
+measures <- c("VO2Max", "VO2Peak", "Body fat (%)", "Weight (Kg)", "Vertical Jump","6.5km*hr-1", "16km*hr-1",
+              "12km*hr-1")
+# Create the file name by appending the date to "anova_results.txt"
+file_name <- paste0(output_directory, "/", date, "anova_results.txt")
+
+# Open the file connection
+fileConn <- file(file_name, "w")
+# Loop through each measure and perform ANOVA
+for (measure in measures) {
+  # Subset the data for the current measure
+  measure_data <- subset(mydata, Measure == measure)
+  # Convert the data to long format
+  long_data <- pivot_longer(measure_data, cols = c(PRE, MID, POST), names_to = "Timepoint", values_to = "Value")
+  # Fit aov model with long format data
+  aov_result <- aov(Value ~ Timepoint + Error(Subject), data = long_data)
+  # Print ANOVA table with measure name
+  cat("Measure:", measure, "\n")
+  print(summary(aov_result))
+  # Write ANOVA table with measure name to file
+  cat("Measure:", measure, "\n", file = fileConn)
+  writeLines(capture.output(print(summary(aov_result))), fileConn)
+}
+# Close the file connection
+close(fileConn)
+
+mydata_T <- mydata[mydata$Subject %in% trained_subjects, ]
+# Create the file name by appending the date to "anova_results.txt"
+file_name <- paste0(output_directory, "/", date, "trained_anova_results.txt", sep = "_")
+
+# Open the file connection
+fileConn <- file(file_name, "w")
+# Loop through each measure and perform ANOVA
+for (measure in measures) {
+  # Subset the data for the current measure
+  measure_data <- subset(mydata_T, Measure == measure)
+  # Convert the data to long format
+  long_data <- pivot_longer(measure_data, cols = c(PRE, MID, POST), names_to = "Timepoint", values_to = "Value")
+  # Fit aov model with long format data
+  aov_result <- aov(Value ~ Timepoint + Error(Subject), data = long_data)
+  # Write ANOVA table with measure name to file
+  cat("Measure:", measure, "\n", file = fileConn)
+  writeLines(capture.output(print(summary(aov_result))), fileConn)
+}
+# Close the file connection
+close(fileConn)
+
+# Create a list of measures
+measures <- c("VO2Max", "VO2Peak", "Body fat (%)", "Weight (Kg)", "Vertical Jump","6.5km*hr-1",
+              #"16km*hr-1",
+              "12km*hr-1")
+mydata_U <- mydata[mydata$Subject %in% untrained_subjects, ]
+# Create the file name by appending the date to "anova_results.txt"
+file_name <- paste0(output_directory, "/", date, "untrained_anova_results.txt", sep = "_")
+
+# Open the file connection
+fileConn <- file(file_name, "w")
+# Loop through each measure and perform ANOVA
+for (measure in measures) {
+  # Subset the data for the current measure
+  measure_data <- subset(mydata_U, Measure == measure)
+  # Convert the data to long format
+  long_data <- pivot_longer(measure_data, cols = c(PRE, MID, POST), names_to = "Timepoint", values_to = "Value")
+  # Fit aov model with long format data
+  aov_result <- aov(Value ~ Timepoint + Error(Subject), data = long_data)
+  # Write ANOVA table with measure name to file
+  cat("Measure:", measure, "\n", file = fileConn)
+  writeLines(capture.output(print(summary(aov_result))), fileConn)
+}
+# Close the file connection
+close(fileConn)
+```
+
+### Normality and homogeneity tests
+
+```{r VO2 and other variables summary, echo=FALSE}
+mydata_reshaped <- mydata %>%
+  pivot_longer(cols = c("PRE", "MID", "POST"), names_to = "Timepoint", values_to = "Weight") %>%
+  mutate(Timepoint = factor(Timepoint, levels = c("PRE", "MID", "POST")))
+
+#Assessing Normality and homogeneity of variance
+# Group your data by 'Measure_Exercise' and perform the Shapiro-Wilk test for each group
+normality_tests <- mydata_reshaped %>%
+  filter(Weight != 0) %>%
+  group_by(Measure, Timepoint) %>%
+  summarize(p_value = shapiro.test(Weight)$p.value, .groups = 'drop')
+# Filter for sig non-normality
+fnt <- filter(normality_tests, p_value < 0.05)
+kable(fnt, digits = 3, caption = "Shapiro-Wilk test for normality group_by(Measure, Timepoint) ")
+
+# Filter for sig non-normality
+mydata_long2 <- mydata_reshaped %>%
+  filter(Weight != 0) %>%
+    filter(Measure %in% c("12km*hr-1", "YYIR"))
+
+ggplot(mydata_long2, aes(x = Weight)) +
+  geom_histogram(binwidth = 5, fill = "lightblue", color = "black") +
+  facet_wrap(~ Measure, scales = "free") +
+  labs(x = "Value", y = "Frequency") +
+  ggtitle("Histogram Facetted by Measure_Exercise") +
+  theme_minimal()
+
+# Group your data by 'Measure_Exercise' and perform the Shapiro-Wilk test for each group
+normality_tests <- mydata_reshaped %>%
+  filter(Weight != 0) %>%
+  group_by(Measure, Timepoint, TrainingStatus) %>%
+  summarize(p_value = shapiro.test(Weight)$p.value, .groups = 'drop')
+# Filter for sig non-normality
+fnt <- filter(normality_tests, p_value < 0.05)
+kable(fnt, digits = 3, caption = "Shapiro-Wilk test for normality, group_by(Measure, Timepoint, TrainingStatus)")
+
+# Group your data by 'Measure_Exercise' and perform the Shapiro-Wilk test for each group
+normality_tests <- mydata_reshaped %>%
+  filter(Weight != 0) %>%
+  group_by(Measure, TrainingStatus) %>%
+  summarize(p_value = shapiro.test(Weight)$p.value, .groups = 'drop')
+# Filter for sig non-normality
+fnt <- filter(normality_tests, p_value < 0.05)
+kable(fnt, digits = 3, caption = "Shapiro-Wilk test for normality, group_by(Measure, TrainingStatus) ")
+
+# Group your data by 'Measure_Exercise' and perform the Shapiro-Wilk test for each group
+normality_tests <- mydata_reshaped %>%
+  filter(Weight != 0) %>%
+  group_by(Measure) %>%
+  summarize(p_value = shapiro.test(Weight)$p.value, .groups = 'drop')
+# Filter for sig non-normality
+fnt <- filter(normality_tests, p_value < 0.05)
+kable(fnt, digits = 3, caption = "Shapiro-Wilk test for normality, group_by(Measure) ")
+
+```
+
+### No violation of normality overall, at select timepoints, only YYIR and RE 12km*hr-1 are non-normal. Skew comes from trained subjects, so not surprising.
+
+```{r VO2 and other variables homogeneity, echo=FALSE, warning=FALSE}
+# Perform Levene's Test for homogeneity of variances
+leveneTest(Weight ~ Timepoint *Measure, data = mydata_reshaped)
+
+# Group your data by 'Measure' and perform Levene's Test for each group
+levene_results <- mydata_reshaped %>%
+  group_by(Measure) %>%
+  do(tidy(leveneTest(Weight ~ Timepoint, data = .)))
+
+# Print results
+kable(levene_results, digits = 3)
+levene_results <- filter(levene_results, p.value < 0.05)
+
+# Group your data by 'Measure' and perform Levene's Test for each group
+levene_results <- mydata_reshaped %>%
+  group_by(Measure, TrainingStatus) %>%
+  do(tidy(leveneTest(Weight ~ Timepoint, data = .)))
+
+# Print results
+kable(levene_results, digits = 3)
+levene_results <- filter(levene_results, p.value < 0.05)
+```
+
+#No sig differences in variance between timepoints for any measure.
+
+```{r VO2 and other variables summary2, echo=FALSE, warning=FALSE}
+# Generate summary of mean and stdev grouped by measure. Additionally, output formatted mean±stdev for easy table
+mydata_summary <- mydata %>%
+  group_by(Measure) %>%
+  summarize(
+    PRE_Mean = mean(`PRE`, na.rm = TRUE),
+    PRE_SD = sd(`PRE`, na.rm = TRUE),
+    PRE_n = sum(!is.na(PRE)),
+    MID_Mean = mean(`MID`, na.rm = TRUE),
+    MID_SD = sd(`MID`, na.rm = TRUE),
+    MID_n = sum(!is.na(MID)),
+    POST_Mean = mean(`POST`, na.rm = TRUE),
+    POST_SD = sd(`POST`, na.rm = TRUE),
+    POST_n = sum(!is.na(POST)),
+    PRE_Mean_SD = sprintf("%.2f±%.2f", PRE_Mean, PRE_SD),
+    MID_Mean_SD = sprintf("%.2f±%.2f", MID_Mean, MID_SD),
+    POST_Mean_SD = sprintf("%.2f±%.2f", POST_Mean, POST_SD)
+  ) %>%
+  mutate(
+    # Hedge's g for PRE to MID with bias correction
+    hedges_g_pre_mid = ((MID_Mean - PRE_Mean) / 
+                        sqrt((((PRE_n - 1) * PRE_SD^2) + ((MID_n - 1) * MID_SD^2)) / 
+                             (PRE_n + MID_n - 2))) * 
+                        (1 - (3 / (4 * (PRE_n + MID_n - 2) - 1))),
+    
+    # Hedge's g for PRE to POST with bias correction
+    hedges_g_pre_post = ((POST_Mean - PRE_Mean) / 
+                         sqrt((((PRE_n - 1) * PRE_SD^2) + ((POST_n - 1) * POST_SD^2)) / 
+                              (PRE_n + POST_n - 2))) * 
+                         (1 - (3 / (4 * (PRE_n + POST_n - 2) - 1))),
+    
+    # Hedge's g for MID to POST with bias correction
+    hedges_g_mid_post = ((POST_Mean - MID_Mean) / 
+                         sqrt((((MID_n - 1) * MID_SD^2) + ((POST_n - 1) * POST_SD^2)) / 
+                              (MID_n + POST_n - 2))) * 
+                         (1 - (3 / (4 * (MID_n + POST_n - 2) - 1)))
+  ) %>%
+  select(-PRE_Mean, -PRE_SD, -PRE_n, -MID_Mean, -MID_SD, -MID_n, -POST_Mean, -POST_SD, -POST_n)
+
+# Create data in long format for analysis
+mydata_reshaped <- mydata %>%
+  pivot_longer(cols = c("PRE", "MID", "POST"), names_to = "Timepoint", values_to = "Weight") %>%
+  mutate(Timepoint = factor(Timepoint, levels = c("PRE", "MID", "POST")))
+
+# Calculate p-values for VO2 measures
+p_values <- run_paired_ttests_grouped(mydata_reshaped, "Measure")
+
+# Join summary stats and p-values
+summary_p_values <- left_join(mydata_summary, p_values, by = "Measure")
+
+# Display significant results
+p_values_filtered <- p_values %>%
+  filter(if_any(starts_with("p_val"), ~ . < 0.05))
+kable(p_values_filtered, digits = 3, caption = "Significant (p<0.05) Paired t-test p-values for PRE vs MID, PRE vs POST, and MID vs POST")
+
+# Display full results with hedge's g
+kable(summary_p_values, digits = 3, caption = "Summary of mean and stdev grouped by measure, Hedge's g and p-value")
+
+# Export results
+file_name <- paste0(output_directory, "/", date, "VO2_combined_summary.csv")
+write.csv(summary_p_values, file = file_name, row.names = FALSE)
+
+# TRAINED subjects analysis
+mydata_summary_T <- mydata_T %>%
+  group_by(Measure) %>%
+  summarize(
+    PRE_Mean = mean(`PRE`, na.rm = TRUE),
+    PRE_SD = sd(`PRE`, na.rm = TRUE),
+    PRE_n = sum(!is.na(PRE)),
+    MID_Mean = mean(`MID`, na.rm = TRUE),
+    MID_SD = sd(`MID`, na.rm = TRUE),
+    MID_n = sum(!is.na(MID)),
+    POST_Mean = mean(`POST`, na.rm = TRUE),
+    POST_SD = sd(`POST`, na.rm = TRUE),
+    POST_n = sum(!is.na(POST)),
+    PRE_Mean_SD = sprintf("%.2f±%.2f", PRE_Mean, PRE_SD),
+    MID_Mean_SD = sprintf("%.2f±%.2f", MID_Mean, MID_SD),
+    POST_Mean_SD = sprintf("%.2f±%.2f", POST_Mean, POST_SD)
+  ) %>%
+  mutate(
+    # Hedge's g calculation with bias correction
+    hedges_g_pre_mid = ((MID_Mean - PRE_Mean) / 
+                        sqrt((((PRE_n - 1) * PRE_SD^2) + ((MID_n - 1) * MID_SD^2)) / 
+                             (PRE_n + MID_n - 2))) * 
+                        (1 - (3 / (4 * (PRE_n + MID_n - 2) - 1))),
+    hedges_g_pre_post = ((POST_Mean - PRE_Mean) / 
+                         sqrt((((PRE_n - 1) * PRE_SD^2) + ((POST_n - 1) * POST_SD^2)) / 
+                              (PRE_n + POST_n - 2))) * 
+                         (1 - (3 / (4 * (PRE_n + POST_n - 2) - 1))),
+    hedges_g_mid_post = ((POST_Mean - MID_Mean) / 
+                         sqrt((((MID_n - 1) * MID_SD^2) + ((POST_n - 1) * POST_SD^2)) / 
+                              (MID_n + POST_n - 2))) * 
+                         (1 - (3 / (4 * (MID_n + POST_n - 2) - 1)))
+  ) %>%
+  select(-PRE_Mean, -PRE_SD, -PRE_n, -MID_Mean, -MID_SD, -MID_n, -POST_Mean, -POST_SD, -POST_n)
+
+# Reshape trained data for analysis
+mydata_reshaped_T <- mydata_T %>%
+  pivot_longer(cols = c("PRE", "MID", "POST"), names_to = "Timepoint", values_to = "Weight")
+
+# Calculate p-values for trained subjects
+p_values_T <- run_paired_ttests_grouped(mydata_reshaped_T, "Measure")
+p_values_filtered_T <- p_values_T %>%
+  filter(if_any(starts_with("p_val"), ~ . < 0.05))
+
+# Join and display results for trained subjects
+summary_p_values_T <- left_join(mydata_summary_T, p_values_T, by = "Measure")
+kable(p_values_filtered_T, digits = 3, caption = "TRAINED: Significant (p<0.05) Paired t-test p-values")
+kable(summary_p_values_T, digits = 3, caption = "TRAINED: Summary with Hedge's g and p-values")
+
+# Export trained results
+file_name_T <- paste0(output_directory, "/", date, "VO2_TRAINED_summary.csv")
+write.csv(summary_p_values_T, file = file_name_T, row.names = FALSE)
+
+# UNTRAINED subjects analysis
+mydata_summary_U <- mydata_U %>%
+  group_by(Measure) %>%
+  summarize(
+    PRE_Mean = mean(`PRE`, na.rm = TRUE),
+    PRE_SD = sd(`PRE`, na.rm = TRUE),
+    PRE_n = sum(!is.na(PRE)),
+    MID_Mean = mean(`MID`, na.rm = TRUE),
+    MID_SD = sd(`MID`, na.rm = TRUE),
+    MID_n = sum(!is.na(MID)),
+    POST_Mean = mean(`POST`, na.rm = TRUE),
+    POST_SD = sd(`POST`, na.rm = TRUE),
+    POST_n = sum(!is.na(POST)),
+    PRE_Mean_SD = sprintf("%.2f±%.2f", PRE_Mean, PRE_SD),
+    MID_Mean_SD = sprintf("%.2f±%.2f", MID_Mean, MID_SD),
+    POST_Mean_SD = sprintf("%.2f±%.2f", POST_Mean, POST_SD)
+  ) %>%
+  mutate(
+    # Hedge's g calculation with bias correction
+    hedges_g_pre_mid = ((MID_Mean - PRE_Mean) / 
+                        sqrt((((PRE_n - 1) * PRE_SD^2) + ((MID_n - 1) * MID_SD^2)) / 
+                             (PRE_n + MID_n - 2))) * 
+                        (1 - (3 / (4 * (PRE_n + MID_n - 2) - 1))),
+    hedges_g_pre_post = ((POST_Mean - PRE_Mean) / 
+                         sqrt((((PRE_n - 1) * PRE_SD^2) + ((POST_n - 1) * POST_SD^2)) / 
+                              (PRE_n + POST_n - 2))) * 
+                         (1 - (3 / (4 * (PRE_n + POST_n - 2) - 1))),
+    hedges_g_mid_post = ((POST_Mean - MID_Mean) / 
+                         sqrt((((MID_n - 1) * MID_SD^2) + ((POST_n - 1) * POST_SD^2)) / 
+                              (MID_n + POST_n - 2))) * 
+                         (1 - (3 / (4 * (MID_n + POST_n - 2) - 1)))
+  ) %>%
+  select(-PRE_Mean, -PRE_SD, -PRE_n, -MID_Mean, -MID_SD, -MID_n, -POST_Mean, -POST_SD, -POST_n)
+
+# Reshape untrained data and remove problematic Wmax measure
+mydata_reshaped_U <- mydata_U %>%
+  pivot_longer(cols = c("PRE", "MID", "POST"), names_to = "Timepoint", values_to = "Weight") %>%
+  filter(Measure != "Wmax")  # Remove measure causing issues
+
+# Calculate p-values for untrained subjects
+p_values_U <- run_paired_ttests_grouped(mydata_reshaped_U, "Measure")
+p_values_filtered_U <- p_values_U %>%
+  filter(if_any(starts_with("p_val"), ~ . < 0.05))
+
+# Join and display results for untrained subjects
+summary_p_values_U <- left_join(mydata_summary_U, p_values_U, by = "Measure")
+kable(p_values_filtered_U, digits = 3, caption = "UNTRAINED: Significant (p<0.05) Paired t-test p-values")
+kable(summary_p_values_U, digits = 3, caption = "UNTRAINED: Summary with Hedge's g and p-values")
+
+# Export untrained results
+file_name_U <- paste0(output_directory, "/", date, "VO2_UNTRAINED_summary.csv")
+write.csv(summary_p_values_U, file = file_name_U, row.names = FALSE)
+
+# Trained vs Untrained comparison at each timepoint
+t_test_results <- mydata_reshaped %>%
+  group_by(Measure, Timepoint) %>%
+  filter(length(unique(TrainingStatus)) == 2) %>%
+  summarize(
+    t_test_result = list(t.test(Weight ~ TrainingStatus, data = cur_data())),
+    p_value = t_test_result[[1]]$p.value,
+    mean_diff = diff(t_test_result[[1]]$estimate),
+    conf_low = t_test_result[[1]]$conf.int[1],
+    conf_high = t_test_result[[1]]$conf.int[2],
+    .groups = "drop"
+  ) %>%
+  select(Measure, Timepoint, p_value, mean_diff, conf_low, conf_high)
+
+# Display significant group differences
+t_test_results_sig <- t_test_results %>%
+  filter(p_value < 0.05) %>%
+  arrange(Measure, Timepoint)
+
+kable(t_test_results_sig, digits = 3, 
+      caption = "Significant differences (p<0.05) between trained and untrained groups")
+
+# Overall trained vs untrained comparison (across all timepoints)
+t_test_overall <- mydata_reshaped %>%
+  group_by(Measure) %>%
+  filter(length(unique(TrainingStatus)) == 2) %>%
+  summarize(
+    t_test_result = list(t.test(Weight ~ TrainingStatus, data = cur_data())),
+    p_value = t_test_result[[1]]$p.value,
+    mean_diff = diff(t_test_result[[1]]$estimate),
+    conf_low = t_test_result[[1]]$conf.int[1],
+    conf_high = t_test_result[[1]]$conf.int[2],
+    .groups = "drop"
+  ) %>%
+  select(Measure, p_value, mean_diff, conf_low, conf_high)
+
+# Display significant overall differences
+t_test_overall_sig <- t_test_overall %>%
+  filter(p_value < 0.05) %>%
+  arrange(Measure)
+
+kable(t_test_overall_sig, digits = 3, 
+      caption = "Significant overall differences (p<0.05) between trained and untrained groups")
+
+```
+
+```{r VO2 and other variables plot, echo=FALSE, warning=FALSE}
+# Pivot the data into long format
+long_data <- mydata %>% pivot_longer(cols = c(PRE, MID, POST), names_to = "Timepoint", values_to = "Value")
+# Subset the data to only include VO2Max and VO2Peak
+vo2_data <- subset(long_data, Measure %in% c("VO2Max", "VO2Peak"))
+# Change the levels of the Timepoint factor to set the desired order
+vo2_data$Timepoint <- factor(vo2_data$Timepoint, levels = c("PRE", "MID", "POST"))
+# Calculate the mean and standard deviation for each timepoint and measure combination
+vo2_summary <- vo2_data %>%
+  group_by(Measure, Timepoint) %>%
+  summarise(mean = mean(Value), sd = sd(Value), .groups = 'drop')
+# Set the y-axis label to the desired format
+y_axis_label <- expression(paste("VO"[2], " (", "ml" %*% kg^-1 %*% min^-1, ")"))
+# create a vector indicating which bars are significantly different
+sig_diff_vo2 <- c(F, T, T, F, F, F)
+
+# consider a recode to use dots and lines!!!
+####
+
+
+
+
+
+
+# Create the plot sig diff
+vo2_plot <-
+  ggplot(vo2_summary, aes(x = Timepoint, y = mean, fill = Measure)) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(y = mean + sd + 1, label = ifelse(sig_diff_vo2, "*", "")),
+            position = position_dodge(width = 0.9), size = 10) +
+  labs(x = "", y = y_axis_label, fill = "") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color)) +
+  theme_bw() +
+  theme(legend.position = c(0.1, 0.9),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+
+# Save the plot to a png file at 1200 dpi
+file_name_plot <- paste0(output_directory, "/", date, "_color_vo2_plot.png")
+ggsave(file_name_plot, plot = vo2_plot, width = 8, height = 5, dpi = 1200)
+print(vo2_plot)
+
+# Pivot the data into long format
+long_data_T <- mydata_T %>% pivot_longer(cols = c(PRE, MID, POST), names_to = "Timepoint", values_to = "Value")
+# Subset the data to only include VO2Max and VO2Peak
+vo2_data_T <- subset(long_data_T, Measure %in% c("VO2Max", "VO2Peak"))
+# Change the levels of the Timepoint factor to set the desired order
+vo2_data_T$Timepoint <- factor(vo2_data_T$Timepoint, levels = c("PRE", "MID", "POST"))
+# Calculate the mean and standard deviation for each timepoint and measure combination
+vo2_summary_T <- vo2_data_T %>%
+  group_by(Measure, Timepoint) %>%
+  summarise(mean = mean(Value), sd = sd(Value), .groups = 'drop')
+# create a vector indicating which bars are significantly different
+sig_diff_vo2_T <- c(F, F, F, F, F, F)
+# Create the plot sig diff
+vo2_T_plot <-
+  ggplot(vo2_summary_T, aes(x = Timepoint, y = mean, fill = Measure)) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(y = mean + sd + 1, label = ifelse(sig_diff_vo2_T, "*", "")),
+            position = position_dodge(width = 0.9), size = 10) +
+  labs(x = "", y = y_axis_label, fill = "") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color)) +
+  scale_y_continuous(limits = c(0, 60),
+                     breaks = seq(0, 50, 10),
+                     minor_breaks = seq(0, 50, 10),
+                     expand = c(0, 0)) +
+  theme_bw() +
+  theme(legend.position = c(0.1, 0.9),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+
+# create a vector indicating which bars are significantly different
+sig_diff_vo2_U <- c(F, T, T, F, F, F)
+
+# Pivot the data into long format
+long_data_U <- mydata_U %>% pivot_longer(cols = c(PRE, MID, POST), names_to = "Timepoint", values_to = "Value")
+# Subset the data to only include VO2Max and VO2Peak
+vo2_data_U <- subset(long_data_U, Measure %in% c("VO2Max", "VO2Peak"))
+# Change the levels of the Timepoint factor to set the desired order
+vo2_data_U$Timepoint <- factor(vo2_data_U$Timepoint, levels = c("PRE", "MID", "POST"))
+# Calculate the mean and standard deviation for each timepoint and measure combination
+vo2_summary_U <- vo2_data_U %>%
+  group_by(Measure, Timepoint) %>%
+  summarise(mean = mean(Value), sd = sd(Value), .groups = 'drop')
+# Create the plot sig diff
+vo2_U_plot <-
+  ggplot(vo2_summary_U, aes(x = Timepoint, y = mean, fill = Measure)) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(y = mean + sd + 1, label = ifelse(sig_diff_vo2_U, "*", "")),
+            position = position_dodge(width = 0.9), size = 10) +
+  labs(x = "", y = y_axis_label, fill = "") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color)) +
+    scale_y_continuous(limits = c(0, 60),
+                     breaks = seq(0, 50, 10),
+                     minor_breaks = seq(0, 50, 10),
+                     expand = c(0, 0)) +
+  theme_bw() +
+  theme(legend.position = c(0.1, 0.9),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+
+# Label for the first plot
+label1 <- "Trained"
+# Label for the second plot
+label2 <- "Untrained"
+# Arrange plots and label them
+vo2_combined_plot <-
+  ggarrange(vo2_T_plot, vo2_U_plot, ncol = 2, common.legend = TRUE, legend = "right",
+            labels = c(label1, label2))
+print(vo2_combined_plot)
+file_name_plot <- paste0(output_directory, "/", date,"__combined_color_vo2_plot.png")
+ggsave(file_name_plot, plot = vo2_combined_plot, width = 8, height = 5, dpi = 1200)
+```
+
+# Other variables
+
+```{r other variables, echo=FALSE, warning=FALSE, message=FALSE }
+# Subset the data to only include body fat and weight
+RE_data <- subset(long_data, Measure %in% c("6.5km*hr-1", "16km*hr-1", "12km*hr-1"))
+# Change the levels of the Timepoint factor to set the desired order
+RE_data$Timepoint <- factor(RE_data$Timepoint, levels = c("PRE", "MID", "POST"))
+RE_data$Measure <- factor(RE_data$Measure, levels = c("6.5km*hr-1", "12km*hr-1", "16km*hr-1"))
+# Calculate the mean and standard deviation for each timepoint and measure combination
+RE_summary <- RE_data %>%
+  group_by(Measure, Timepoint) %>%
+  summarise(mean = mean(Value), sd = sd(Value), .groups = 'drop')
+# Create the plot sig diff
+RE_plot <-
+  ggplot(RE_summary, aes(x = Timepoint, y = mean, fill = Measure)) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "", y = y_axis_label, fill = "") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_y_continuous(limits = c(0, 60), breaks = seq(0, 60, 10)) +  # Manual y-axis limits and tick marks
+  theme_bw() +
+  theme(legend.position = c(0.1, 0.9),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+
+# Save the plot to a png file at 1200 dpi
+file_name_plot <- paste0(output_directory, "/", date, "_color_RE_plot.png")
+ggsave(file_name_plot, plot = RE_plot, width = 6, height = 4, dpi = 1200)
+
+RE_data_T <- subset(long_data_T, Measure %in% c("6.5km*hr-1", "16km*hr-1", "12km*hr-1"))
+# Change the levels of the Timepoint factor to set the desired order
+RE_data_T$Timepoint <- factor(RE_data_T$Timepoint, levels = c("PRE", "MID", "POST"))
+RE_data_T$Measure <- factor(RE_data_T$Measure, levels = c("6.5km*hr-1", "12km*hr-1", "16km*hr-1"))
+# Calculate the mean and standard deviation for each timepoint and measure combination
+RE_summary_T <- RE_data_T %>%
+  group_by(Measure, Timepoint) %>%
+  summarise(mean = mean(Value), sd = sd(Value), .groups = 'drop')
+# Create the plot sig diff
+RE_plot_T <-
+  ggplot(RE_summary_T, aes(x = Timepoint, y = mean, fill = Measure)) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "", y = y_axis_label, fill = "") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_y_continuous(limits = c(0, 60), breaks = seq(0, 60, 10)) +  # Manual y-axis limits and tick marks
+  theme_bw() +
+  theme(legend.position = c(0.1, 0.9),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+
+
+RE_data_U <- subset(long_data_U, Measure %in% c("6.5km*hr-1", "16km*hr-1", "12km*hr-1"))
+# Change the levels of the Timepoint factor to set the desired order
+RE_data_U$Timepoint <- factor(RE_data_U$Timepoint, levels = c("PRE", "MID", "POST"))
+RE_data_U$Measure <- factor(RE_data_U$Measure, levels = c("6.5km*hr-1", "12km*hr-1", "16km*hr-1"))
+# Calculate the mean and standard deviation for each timepoint and measure combination
+RE_summary_U <- RE_data_U %>%
+  group_by(Measure, Timepoint) %>%
+  summarise(mean = mean(Value), sd = sd(Value), .groups = 'drop')
+# Create the plot sig diff
+RE_plot_U <-
+  ggplot(RE_summary_U, aes(x = Timepoint, y = mean, fill = Measure)) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "", y = y_axis_label, fill = "") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_y_continuous(limits = c(0, 60), breaks = seq(0, 60, 10)) +  # Manual y-axis limits and tick marks
+  theme_bw() +
+  theme(legend.position = c(0.1, 0.9),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+
+combined_plot_RE <- ggarrange(RE_plot, RE_plot_T, RE_plot_U, ncol = 1, nrow = 3, common.legend = TRUE, legend = "right")
+print(combined_plot_RE)
+
+# Subset the data to only include running economy
+VJ_data <- subset(long_data, Measure %in% c("Vertical Jump"))
+# Change the levels of the Timepoint factor to set the desired order
+VJ_data$Timepoint <- factor(VJ_data$Timepoint, levels = c("PRE", "MID", "POST"))
+# Calculate the mean and standard deviation for each timepoint and measure combination
+VJ_summary <- VJ_data %>%
+  group_by(Measure, Timepoint) %>%
+  summarise(mean = mean(Value), sd = sd(Value), .groups = 'drop')
+# Create the plot sig diff
+VJ_plot <-
+  ggplot(VJ_summary, aes(x = Timepoint, y = mean, fill = Measure)) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "", y = "Inches", fill = "") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  theme_bw() +
+  theme(legend.position = c(0.1, 1),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+# Save the plot to a png file at 1200 dpi
+file_name_plot <- paste0(output_directory, "/", date, "_color_VJ_plot.png")
+ggsave(file_name_plot, plot = VJ_plot, width = 6, height = 4, dpi = 1200)
+
+# Subset the data to only include running economy
+WM_data <- subset(long_data, Measure %in% c("Wmax"))
+# Change the levels of the Timepoint factor to set the desired order
+WM_data$Timepoint <- factor(WM_data$Timepoint, levels = c("PRE", "MID", "POST"))
+# Calculate the mean and standard deviation for each timepoint and measure combination
+WM_summary <- WM_data %>%
+  group_by(Measure, Timepoint) %>%
+  summarise(mean = mean(Value), sd = sd(Value), .groups = 'drop')
+# Create the plot sig diff
+WM_plot <-
+  ggplot(WM_summary, aes(x = Timepoint, y = mean, fill = Measure)) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Maximum wattage during VO2 test", y = "Watts", fill = "") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  theme_bw() +
+  theme(legend.position = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+
+# Subset the data to only include running economy
+WM_data_T <- subset(long_data_T, Measure %in% c("Wmax"))
+# Change the levels of the Timepoint factor to set the desired order
+WM_data_T$Timepoint <- factor(WM_data_T$Timepoint, levels = c("PRE", "MID", "POST"))
+# Calculate the mean and standard deviation for each timepoint and measure combination
+WM_summary_T <- WM_data_T %>%
+  group_by(Measure, Timepoint) %>%
+  summarise(mean = mean(Value), sd = sd(Value), .groups = 'drop')
+# create a vector indicating which bars are significantly different
+sig_diff_WM_T <- c(F, F, T)
+# Create the plot sig diff
+WM_plot_T <-
+  ggplot(WM_summary_T, aes(x = Timepoint, y = mean, fill = Measure)) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(y = mean + sd + 2, label = ifelse(sig_diff_WM_T, "*", "")),
+            position = position_dodge(width = 0.9), size = 10) +
+  labs(x = "Trained", y = "Watts", fill = "") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  theme_bw() +
+  theme(legend.position = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+
+# Subset the data to only include running economy
+WM_data_U <- subset(long_data_U, Measure %in% c("Wmax"))
+# Change the levels of the Timepoint factor to set the desired order
+WM_data_U$Timepoint <- factor(WM_data_U$Timepoint, levels = c("PRE", "MID", "POST"))
+# Calculate the mean and standard deviation for each timepoint and measure combination
+WM_summary_U <- WM_data_U %>%
+  group_by(Measure, Timepoint) %>%
+  summarise(mean = mean(Value), sd = sd(Value), .groups = 'drop')
+# Create the plot sig diff
+WM_plot_U <-
+  ggplot(WM_summary_U, aes(x = Timepoint, y = mean, fill = Measure)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(ymin = mean, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
+  labs(x = "Untrained", y = "Watts", fill = "") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  theme_bw() +
+  theme(legend.position = element_blank(),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+
+combined_plot_WM <- ggarrange(WM_plot, WM_plot_T, WM_plot_U, ncol = 3, common.legend = TRUE, legend = "right")
+print(combined_plot_WM)
+
+BC_data <- subset(long_data, Measure %in% c("Body fat (%)", "Weight (Kg)", "Vertical Jump"))
+# Change the levels of the Timepoint factor to set the desired order
+BC_data$Timepoint <- factor(BC_data$Timepoint, levels = c("PRE", "MID", "POST"))
+# Calculate the mean and standard deviation for each timepoint and measure combination
+BC_summary <- BC_data %>%
+  group_by(Measure, Timepoint) %>%
+  summarise(mean = mean(Value), sd = sd(Value), .groups = 'drop')
+# Create the plot sig diff
+BC_plot <-
+  ggplot(BC_summary, aes(x = Timepoint, y = mean, fill = Measure)) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "All", y = "", fill = "") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_y_continuous(limits = c(0, 125), breaks = seq(0, 125, 25)) +
+  theme_bw() +
+  theme(legend.position = c(0.1, 0.9),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+# Save the plot to a png file at 1200 dpi
+file_name_plot <- paste0(output_directory, "/", date, "_color_COMBO_BC_VJ_plot.png")
+ggsave(file_name_plot, plot = BC_plot, width = 6, height = 4, dpi = 1200)
+
+BC_data_T <- subset(long_data_T, Measure %in% c("Body fat (%)", "Weight (Kg)", "Vertical Jump"))
+# Change the levels of the Timepoint factor to set the desired order
+BC_data_T$Timepoint <- factor(BC_data_T$Timepoint, levels = c("PRE", "MID", "POST"))
+# Calculate the mean and standard deviation for each timepoint and measure combination
+BC_summary_T <- BC_data_T %>%
+  group_by(Measure, Timepoint) %>%
+  summarise(mean = mean(Value), sd = sd(Value), .groups = 'drop')
+# Create the plot sig diff
+BC_plot_T <-
+  ggplot(BC_summary_T, aes(x = Timepoint, y = mean, fill = Measure)) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Trained", y = "", fill = "") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+    scale_y_continuous(limits = c(0, 125), breaks = seq(0, 125, 25)) +
+  theme_bw() +
+  theme(legend.position = c(0.1, 0.9),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+
+BC_data_U <- subset(long_data_U, Measure %in% c("Body fat (%)", "Weight (Kg)", "Vertical Jump"))
+# Change the levels of the Timepoint factor to set the desired order
+BC_data_U$Timepoint <- factor(BC_data_U$Timepoint, levels = c("PRE", "MID", "POST"))
+# Calculate the mean and standard deviation for each timepoint and measure combination
+BC_summary_U <- BC_data_U %>%
+  group_by(Measure, Timepoint) %>%
+  summarise(mean = mean(Value), sd = sd(Value), .groups = 'drop')
+# Create the plot sig diff
+BC_plot_U <-
+  ggplot(BC_summary_U, aes(x = Timepoint, y = mean, fill = Measure)) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "Untrained", y = "", fill = "") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+    scale_y_continuous(limits = c(0, 125), breaks = seq(0, 125, 25)) +
+  theme_bw() +
+  theme(legend.position = c(0.1, 0.9),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+
+combined_plot_BC <- ggarrange(BC_plot, BC_plot_T, BC_plot_U, ncol = 3, common.legend = TRUE, legend = "right")
+print(combined_plot_BC)
+
+# Subset the data to only include YYIR
+YY_data <- subset(long_data, Measure %in% c("YYIR"))
+# Change the levels of the Timepoint factor to set the desired order
+YY_data$Timepoint <- factor(YY_data$Timepoint, levels = c("PRE", "MID", "POST"))
+# Add a new column "TrainingStatus" based on the subjects
+YY_data <- YY_data %>%
+  mutate(TrainingStatus = ifelse(Subject %in% trained_subjects, "trained", "untrained"))
+# Calculate the mean and standard deviation for each timepoint and measure combination
+YY_summary <- YY_data %>%
+  group_by(Measure, Timepoint, TrainingStatus) %>%
+  summarise(mean = mean(Value), sd = sd(Value), .groups = 'drop')
+
+# Create the plot sig diff
+YY_plot <-
+  ggplot(YY_summary, aes(x = Timepoint, y = mean, fill = TrainingStatus)) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(x = "YYIR-2", y = "Meters", fill = "") +
+  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  theme_bw() +
+  theme(legend.position = c(0.1, .95),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        panel.border = element_blank())
+
+print(YY_plot)
+# Save the plot to a png file at 1200 dpi
+file_name_plot <- paste0(output_directory, "/", date, "_color_YY_plot.png")
+ggsave(file_name_plot, plot = YY_plot, width = 6, height = 4, dpi = 1200)
+```
+
+# Session data
+Weekly resistance training load progression over 10 weeks
+
+```{r Session, }
+# Create 1RM table to compare to
+RM1_data_PRE <- mydata_1rm %>%
+  dplyr::select(Subject, Exercise, PRE)
+# Create 1RM table to compare to
+RM1_data_POST <- mydata_1rm %>%
+  dplyr::select(Subject, Exercise, POST)
+
+
+# why is there only 8 subjects? Shouldn't there be 9?
+# sub 3 lat pulldown
+
+# Function to calculate Hedges' g manually
+calculate_hedges_g <- function(group1, group2) {
+  # Calculate means
+  m1 <- mean(group1, na.rm = TRUE)
+  m2 <- mean(group2, na.rm = TRUE)
+  
+  # Calculate sample sizes
+  n1 <- length(group1)
+  n2 <- length(group2)
+  
+  # Calculate pooled standard deviation
+  s1 <- var(group1, na.rm = TRUE)
+  s2 <- var(group2, na.rm = TRUE)
+  s_pooled <- sqrt(((n1 - 1) * s1 + (n2 - 1) * s2) / (n1 + n2 - 2))
+  
+  # Calculate Cohen's d
+  d <- (m2 - m1) / s_pooled
+  
+  # Apply Hedges' correction factor for small sample size
+  correction <- 1 - (3 / (4 * (n1 + n2) - 9))
+  g <- correction * d
+  
+  return(g)
+}
+
+
+##### Load and preprocess session data in a single pipeline
+data <- read_excel("MRP.xlsx", sheet = "Exercise Session RT", col_names = TRUE) %>%
+  mutate(Exercise = dplyr::recode(Exercise, !!!replacements)) %>%
+  filter(Exercise != "BentRow",
+         !(Subject %in% c("SUB 4", "SUB 5", "SUB 13", "SUB 2"))) %>%
+  # Assuming Measure column filtering was intended before conversion
+  filter(Measure == "lbs") %>%
+  mutate(across(starts_with("Week"), ~ .x * 0.45359237),  # Convert lbs to kg directly
+         Measure = gsub("lbs", "kg", Measure)) %>%
+  pivot_longer(cols = starts_with("Week"),
+               names_to = "Week",
+               names_prefix = "Week ",
+               values_to = "Value") %>%
+  # drop_na() %>% # necessary to drop na?  Does this remove missing weeks
+  mutate(Week = as.numeric(Week)) %>%
+  filter(Week <= 10)  # Assuming this filtering is correct
+
+# Write the processed data to a new file with the current date
+file_name <- paste0(output_directory, "/", Sys.Date(), "RTsession_raw_data.xlsx")
+write_xlsx(data, file_name)
+
+# Modify your results dataframe to include Hedges' g
+all_results_df <- tibble(Exercise = character(),
+                         Week = integer(),
+                         p.value = numeric(),
+                         hedges_g = numeric())  # Add column for Hedges' g
+
+# In your loop where you perform t-tests
+for (exercise in unique(data$Exercise)) {
+  exercise_data <- filter(data, Exercise == exercise)
+  weeks <- unique(exercise_data$Week)
+  weeks <- weeks[weeks != 1] # Exclude week 1
+  
+  for (week in weeks) {
+    week_data <- filter(exercise_data, Week %in% c(1, week))
+    
+    # Get data for each week group
+    week1_values <- week_data$Value[week_data$Week == 1]
+    current_week_values <- week_data$Value[week_data$Week == week]
+    
+    # Run t-test
+    t_test_result <- t.test(Value ~ Week, data = week_data, subset = Week %in% c(1, week))
+    
+    # Calculate Hedges' g manually
+    g_value <- calculate_hedges_g(week1_values, current_week_values)
+    
+    # Store results including Hedges' g
+    all_results_df <- bind_rows(all_results_df, tibble(Exercise = exercise,
+                                                       Week = week,
+                                                       p.value = t_test_result$p.value,
+                                                       hedges_g = g_value))
+  }
+}
+
+# Then in your significant results display:
+significant_results <- filter(all_results_df, p.value < 0.1)
+kable(significant_results, digits = 3, caption = "Significant differences in load compared to week 1 (with effect sizes)")
+
+# Calculate the mean and standard deviation for each exercise-week combination
+exercise_summary <- data %>%
+  group_by(Exercise, Week) %>%
+  summarise(mean_value = mean(Value, na.rm = TRUE),
+            sd_value = sd(Value, na.rm = TRUE), .groups = 'drop')
+
+# Convert the week column to factor with numeric levels in the desired order
+exercise_summary$Week <- factor(exercise_summary$Week, levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"))
+# Get unique exercise names
+unique_exercises <- unique(exercise_summary$Exercise)
+# First, ensure significant results has Week as character to match plot_data
+significant_results_strict <- filter(all_results_df, p.value < 0.05) %>%
+  mutate(Week = as.character(Week))
+
+# Loop through unique exercise names and create plots
+exercise_plots <- list()
+for (exercise in unique_exercises) {
+  # Filter the dataset for the current exercise
+  plot_data <- exercise_summary %>%
+    filter(Exercise == exercise)
+  
+  # Get significant weeks for this specific exercise
+  sig_weeks <- significant_results_strict %>%
+    filter(Exercise == exercise) %>%
+    pull(Week)
+  
+  # Create a logical vector for significance markers
+  sig_markers <- plot_data$Week %in% sig_weeks
+  
+  # Create the plot with significance markers
+  exercise_plot <- ggplot(plot_data, aes(x = Week, y = mean_value)) +
+    geom_errorbar(aes(ymin = mean_value - sd_value, ymax = mean_value + sd_value),
+                  width = 0.2) +
+    geom_col(fill = dark_blue_color) +
+    # Add significance markers with a smaller offset
+    geom_text(aes(y = mean_value + sd_value + 2, 
+                 label = ifelse(sig_markers, "*", "")),
+              size = 5) +
+    labs(x = "Week", y = "kg",
+         title = paste(exercise)) +
+    scale_y_continuous(limits = c(0, 101), breaks = seq(0, 100, by = 20)) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          axis.line = element_line())
+  
+  exercise_plots[[exercise]] <- exercise_plot
+}# Assuming exercise_plots is your list of ggplot objects
+arranged_plots <- ggarrange(plotlist = exercise_plots, ncol = 3, nrow = 2)
+print(arranged_plots)
+file_name_plot <-  paste0(output_directory, "/", date, "load_by_week_arranged_plots.png")
+ggsave(file_name_plot, plot = arranged_plots, width = 6, height = 4, dpi = 1200)
+```
+
+Weekly volume load progression over 10 weeks
+
+```{r volume load calculation, echo=FALSE, message=FALSE, warning=FALSE}
+# Load data
+volume_load_long <- read_excel("MRP.xlsx", sheet = "Exercise Session RT", col_names = TRUE) %>%
+  mutate(Exercise = dplyr::recode(Exercise, !!!replacements)) %>%
+  filter(Exercise != "BentRow", !Subject %in% c("SUB 4", "SUB 5", "SUB 13", "SUB 2")) %>%
+  filter(Measure %in% c("lbs", "Reps")) %>%
+  pivot_longer(cols = starts_with("Week"), names_to = "Week", values_to = "Value") %>%
+  pivot_wider(names_from = Measure, values_from = Value) %>%
+  mutate(Volume_Load = lbs * Reps) %>%
+  select(-c(lbs, Reps)) %>%
+  mutate(Week = as.numeric(gsub("Week ", "", Week))) %>%
+  filter(Week <= 10) %>%
+  mutate(Volume_Load = if_else(!is.na(Volume_Load), Volume_Load * lbs_to_kg, Volume_Load))
+
+# Assuming 'volume_load_long' is your dataset
+# Prepare a template for storing results
+all_results_df <- tibble(Exercise = character(),
+                         Week = integer(),
+                         p.value = numeric())
+# Loop over each exercise
+for (exercise in unique(volume_load_long$Exercise)) {
+  # Filter the dataset for the current exercise
+  exercise_data <- filter(volume_load_long, Exercise == exercise)
+  # Identify unique weeks, excluding week 1
+  weeks <- unique(exercise_data$Week)
+  weeks <- weeks[weeks != 1] # Exclude week 1
+  # Loop over weeks to perform t-tests against week 1
+  for (week in weeks) {
+    week_data <- filter(exercise_data, Week %in% c(1, week))
+    t_test_result <- t.test(Volume_Load ~ Week, data = week_data, subset = Week %in% c(1, week))
+    # Store results
+    all_results_df <- bind_rows(all_results_df, tibble(Exercise = exercise,
+                                                       Week = week,
+                                                       p.value = t_test_result$p.value))  }
+}
+significant_results <- filter(all_results_df, p.value < 0.1)
+kable(significant_results, digits = 3, caption = "Significant differences in volume load between week 1 and other weeks (There are none)")
+
+# Calculate the mean and standard deviation for each exercise-week combination
+exercise_summary <- volume_load_long %>%
+  group_by(Exercise, Week) %>%
+  summarise(mean_value = mean(Volume_Load, na.rm = TRUE),
+            sd_value = sd(Volume_Load, na.rm = TRUE), .groups = "drop")
+
+exercise_summary$Week <- factor(exercise_summary$Week, levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"))
+# Create a list to store plots
+exercise_plots <- list()
+
+# Loop through unique exercise names and create plots
+for (exercise in unique_exercises) {
+  plot_data <- exercise_summary %>%
+    filter(Exercise == exercise)
+  exercise_plot <- ggplot(plot_data, aes(x = Week, y = mean_value)) +
+    geom_errorbar(aes(ymin = mean_value - sd_value, ymax = mean_value + sd_value),
+                  width = 0.2) +
+    geom_col(fill = dark_blue_color) +
+    labs(x = "Week", y = "Volume Load",
+         title = paste(exercise)) +
+        theme_minimal() +
+    scale_y_continuous(limits = c(0, 3250), breaks = seq(0, 3250, by = 500)) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+          axis.line = element_line())
+  exercise_plots[[exercise]] <- exercise_plot
+}
+
+# Assuming exercise_plots is your list of ggplot objects
+arranged_plots <- ggarrange(plotlist = exercise_plots, ncol = 3, nrow = 2)
+print(arranged_plots)
+file_name_plot <-  paste0(output_directory, "/", date, "volume_load_by_week_arranged_plots.png")
+ggsave(file_name_plot, plot = arranged_plots, width = 6, height = 4, dpi = 1200)
+```
+
+Volume load progression as a percentage of PRE 1RM
+
+```{r volume load calculation2, echo=FALSE, message=FALSE, warning=FALSE}
+# Load and preprocess session data
+reps_data <- read_excel("MRP.xlsx", sheet = "Exercise Session RT", col_names = TRUE) %>%
+  mutate(Exercise = dplyr::recode(Exercise, !!!replacements)) %>%
+  filter(Exercise != "BentRow",
+         !(Subject %in% c("SUB 4", "SUB 5", "SUB 13", "SUB 2"))) %>%
+  pivot_longer(cols = starts_with("Week"), names_to = "Week", values_to = "Value") %>%
+  drop_na() %>%
+  mutate(Week = as.numeric(gsub("Week ", "", Week))) %>%
+  filter(Week <= 10)  %>%
+  filter(Measure == "Reps") %>%
+  select(Subject, Exercise, Week, Reps_Value = Value)
+
+##### Load and preprocess session data in a single pipeline
+joined_data <- read_excel("MRP.xlsx", sheet = "Exercise Session RT", col_names = TRUE) %>%
+  mutate(Exercise = dplyr::recode(Exercise, !!!replacements)) %>%
+  filter(Exercise != "BentRow",
+         !(Subject %in% c("SUB 4", "SUB 5", "SUB 13", "SUB 2"))) %>%
+  # Assuming Measure column filtering was intended before conversion
+  filter(Measure == "lbs") %>%
+  mutate(across(starts_with("Week"), ~ .x * 0.45359237),  # Convert lbs to kg directly
+         Measure = gsub("lbs", "kg", Measure)) %>%
+  pivot_longer(cols = starts_with("Week"),
+               names_to = "Week",
+               names_prefix = "Week ",
+               values_to = "Value") %>%
+  drop_na() %>%
+  mutate(Week = as.numeric(gsub("Week ", "", Week))) %>%
+  filter(Week <= 10)  %>%
+  left_join(RM1_data_PRE, by = c("Subject", "Exercise"))
+
+# Calculate percentage of 1RM for "lbs" measures
+percentage_data <- joined_data %>%
+  group_by(Subject, Exercise) %>%
+  filter(Measure == "kg") %>%
+  mutate(Percent_Load = (Value / PRE)) %>%
+  select(Subject, Exercise, Week, Percent_Load)
+
+percentage_summary_PRE <- percentage_data %>%
+  group_by(Exercise, Week) %>%
+  summarise(
+    mean_value = mean(Percent_Load, na.rm = TRUE),
+    sd_value = sd(Percent_Load, na.rm = TRUE),
+    .groups = 'drop'  # Drop grouping
+  )
+# Join "Reps" back to the percentage data
+percentage_volume_data <- percentage_data %>%
+  left_join(reps_data, by = c("Subject", "Exercise", "Week")) %>%
+  mutate(Percent_Volume = Percent_Load * Reps_Value) %>%
+  select(Subject, Exercise, Week, Percent_Volume)
+
+# Prepare a template for storing results
+all_results_df <- tibble(Exercise = character(),
+                         Week = integer(),
+                         p.value = numeric(),
+                         hedges_g = numeric())
+
+# Function to calculate Hedges' g manually
+calculate_hedges_g <- function(group1, group2) {
+  # Calculate means
+  m1 <- mean(group1, na.rm = TRUE)
+  m2 <- mean(group2, na.rm = TRUE)
+  
+  # Calculate sample sizes
+  n1 <- length(group1)
+  n2 <- length(group2)
+  
+  # Calculate pooled standard deviation
+  s1 <- var(group1, na.rm = TRUE)
+  s2 <- var(group2, na.rm = TRUE)
+  s_pooled <- sqrt(((n1 - 1) * s1 + (n2 - 1) * s2) / (n1 + n2 - 2))
+  
+  # Calculate Cohen's d
+  d <- (m2 - m1) / s_pooled
+  
+  # Apply Hedges' correction factor for small sample size
+  correction <- 1 - (3 / (4 * (n1 + n2) - 9))
+  g <- correction * d
+  
+  return(g)
+}
+
+# Loop over each exercise to perform statistical tests
+for (exercise in unique(percentage_volume_data$Exercise)) {
+  # Filter the dataset for the current exercise
+  exercise_data <- filter(percentage_volume_data, Exercise == exercise)
+  
+  # Identify unique weeks, excluding week 1
+  weeks <- unique(exercise_data$Week)
+  weeks <- weeks[weeks != 1] # Exclude week 1
+  
+  # Loop over weeks to perform t-tests against week 1
+  for (week in weeks) {
+    # Filter data for week 1 and current week
+    week_data <- exercise_data %>% 
+      filter(Week %in% c(1, week))
+    
+    # Get data for each week group
+    week1_values <- week_data$Percent_Volume[week_data$Week == 1]
+    current_week_values <- week_data$Percent_Volume[week_data$Week == week]
+    
+    # Run t-test
+    t_test_result <- t.test(current_week_values, week1_values)
+    
+    # Calculate Hedges' g manually
+    g_value <- calculate_hedges_g(week1_values, current_week_values)
+    
+    # Store results including Hedges' g
+    all_results_df <- bind_rows(all_results_df, tibble(Exercise = exercise,
+                                                       Week = week,
+                                                       p.value = t_test_result$p.value,
+                                                       hedges_g = g_value))
+  }
+}
+
+# Filter for significant results (p < 0.05)
+significant_results <- filter(all_results_df, p.value < 0.05)
+kable(significant_results, digits = 3, caption = "Significant differences in relative volume load compared to week 1 (with effect sizes)")
+
+# Create exercise summary for plotting
+exercise_summary <- percentage_volume_data %>%
+  group_by(Exercise, Week) %>%
+  summarise(
+    mean_value = mean(Percent_Volume, na.rm = TRUE),
+    sd_value = sd(Percent_Volume, na.rm = TRUE),
+    .groups = 'drop'  # Drop grouping
+  )
+
+# Convert the week column to factor with numeric levels in the desired order
+exercise_summary$Week <- factor(exercise_summary$Week, levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"))
+
+# Get unique exercise names
+unique_exercises <- unique(exercise_summary$Exercise)
+
+# Create a list to store plots
+exercise_plots <- list()
+
+# Ensure significant results has Week as character to match plot_data
+significant_results_df <- significant_results %>%
+  mutate(Week = as.character(Week))
+
+# Loop through unique exercise names and create plots
+for (exercise in unique_exercises) {
+  # Filter the dataset for the current exercise
+  plot_data <- exercise_summary %>%
+    filter(Exercise == exercise)
+  
+  # Get significant weeks for this specific exercise
+  sig_weeks <- significant_results_df %>%
+    filter(Exercise == exercise) %>%
+    pull(Week)
+  
+  # Create a logical vector for significance markers
+  sig_markers <- plot_data$Week %in% sig_weeks
+  
+  # Create the plot with significance markers
+  exercise_plot <- ggplot(plot_data, aes(x = Week, y = mean_value)) +
+    geom_errorbar(aes(ymin = mean_value - sd_value, ymax = mean_value + sd_value),
+                  width = 0.2) +
+    geom_col(fill = dark_blue_color) +
+    # Add significance markers with a smaller offset
+    geom_hline(yintercept = 15, linetype="dashed", color = third_color, linewidth = 1) +  # Adding horizontal line at y = 15
+    geom_hline(yintercept = 22.5, linetype="dashed", color = light_blue_color, linewidth = 1) +  # Adding horizontal line at y = 22.5
+    geom_text(aes(y = mean_value + sd_value + 2, 
+                 label = ifelse(sig_markers, "*", "")),
+              size = 5) +
+    labs(x = "Week", y = "Relative Volume Load",
+         title = paste(exercise)) +
+    theme_minimal() +
+    scale_y_continuous(limits = c(0, 35), breaks = seq(0, 30, by = 10)) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank())
+  
+  exercise_plots[[exercise]] <- exercise_plot
+}
+
+# Arrange and display the plots
+arranged_plots <- ggarrange(plotlist = exercise_plots, ncol = 3, nrow = 2)
+print(arranged_plots)
+file_name_plot <- paste0(output_directory, "/", date, "relative_volume_load_by_week_arranged_plots.png")
+ggsave(file_name_plot, plot = arranged_plots, width = 6, height = 4, dpi = 1200)
+```
+
+Volume load progression as a percentage of POST 1RM
+
+```{r, echo=FALSE}
+# Load and preprocess session data
+reps_data <- read_excel("MRP.xlsx", sheet = "Exercise Session RT", col_names = TRUE) %>%
+  mutate(Exercise = dplyr::recode(Exercise, !!!replacements)) %>%
+  filter(Exercise != "BentRow",
+         !(Subject %in% c("SUB 4", "SUB 5", "SUB 13", "SUB 2"))) %>%
+  pivot_longer(cols = starts_with("Week"), names_to = "Week", values_to = "Value") %>%
+  drop_na() %>%
+  mutate(Week = as.numeric(gsub("Week ", "", Week))) %>%
+  filter(Week <= 10)  %>%
+  filter(Measure == "Reps") %>%
+  select(Subject, Exercise, Week, Reps_Value = Value)
+
+##### Load and preprocess session data in a single pipeline
+ joined_data <- read_excel("MRP.xlsx", sheet = "Exercise Session RT", col_names = TRUE) %>%
+   mutate(Exercise = dplyr::recode(Exercise, !!!replacements)) %>%
+   filter(Exercise != "BentRow",
+          !(Subject %in% c("SUB 4", "SUB 5", "SUB 13", "SUB 2"))) %>%
+   # Assuming Measure column filtering was intended before conversion
+   filter(Measure == "lbs") %>%
+   mutate(across(starts_with("Week"), ~ .x * 0.45359237),  # Convert lbs to kg directly
+          Measure = gsub("lbs", "kg", Measure)) %>%
+   pivot_longer(cols = starts_with("Week"),
+                names_to = "Week",
+                names_prefix = "Week ",
+                values_to = "Value") %>%
+   drop_na() %>%
+   mutate(Week = as.numeric(gsub("Week ", "", Week))) %>%
+   filter(Week <= 10)  %>%
+  left_join(RM1_data_POST, by = c("Subject", "Exercise"))
+
+# Calculate percentage of 1RM for "lbs" measures
+percentage_data <- joined_data %>%
+  group_by(Subject, Exercise) %>%
+  filter(Measure == "kg") %>%
+  mutate(Percent_Load = (Value / POST)) %>%
+  select(Subject, Exercise, Week, Percent_Load)
+
+# Join "Reps" back to the percentage data
+percentage_volume_data <- percentage_data %>%
+  left_join(reps_data, by = c("Subject", "Exercise", "Week")) %>%
+  mutate(Percent_Volume = Percent_Load * Reps_Value) %>%
+  select(-Percent_Load, -Reps_Value) %>%
+  pivot_wider(names_from = "Week", values_from = "Percent_Volume")
+
+percentage_summary_POST <- percentage_data %>%
+  group_by(Exercise, Week) %>%
+  summarise(
+    mean_value = mean(Percent_Load, na.rm = TRUE),
+    sd_value = sd(Percent_Load, na.rm = TRUE),
+    .groups = 'drop'  # Drop grouping
+  )
+# Adjusting exercise summary calculation for numeric week columns
+exercise_summary <- percentage_volume_data %>%
+  pivot_longer(
+    cols = paste0(1:10),  # Directly specify the week columns as they are numeric
+    names_to = "Week",
+    values_to = "Percentage"
+  ) %>%
+  mutate(Week = as.numeric(Week)) %>%  # Ensure 'Week' is numeric for summarise
+  group_by(Exercise, Week) %>%
+  summarise(
+    mean_value = mean(Percentage, na.rm = TRUE),
+    sd_value = sd(Percentage, na.rm = TRUE),
+    .groups = 'drop'  # Drop grouping
+  )
+# Convert the week column to factor with numeric levels in the desired order
+exercise_summary$Week <- factor(exercise_summary$Week, levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"))
+# Get unique exercise names
+unique_exercises <- unique(exercise_summary$Exercise)
+# Create a list to store plots
+exercise_plots <- list()
+# Loop through unique exercise names and create plots
+for (exercise in unique_exercises) {
+  plot_data <- exercise_summary %>%
+    filter(Exercise == exercise)
+    exercise_plot <- ggplot(plot_data, aes(x = Week, y = mean_value)) +
+    geom_errorbar(aes(ymin = mean_value - sd_value, ymax = mean_value + sd_value),
+                  width = 0.2) +
+    geom_col(fill = dark_blue_color) +
+     geom_hline(yintercept = 15, linetype="dashed", color = third_color, linewidth = 1) +  # Adding horizontal line at y = 15
+     geom_hline(yintercept = 22.5, linetype="dashed", color = light_blue_color , linewidth = 1) +  # Adding horizontal line at y = 22.5
+    labs(x = "Week", y = "Relative Volume Load",
+         title = paste(exercise)) +
+    theme_minimal() +
+    scale_y_continuous(limits = c(0, 35), breaks = seq(0, 30, by = 10)) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          panel.border = element_blank(),
+        )
+    exercise_plots[[exercise]] <- exercise_plot
+}
+# Arrange and display the plots
+arranged_plots <- ggarrange(plotlist = exercise_plots, ncol = 3, nrow = 2)
+print(arranged_plots)
+file_name_plot <-  paste0(output_directory, "/", date, "POST_relative_volume_load_by_week_arranged_plots.png")
+ggsave(file_name_plot, plot = arranged_plots, width = 6, height = 4, dpi = 1200)
+
+#Combine percentage_summary_PRE and Percentage_summary_POST side by side
+percentage_summary <- left_join(percentage_summary_PRE, percentage_summary_POST, by = c("Exercise", "Week")) %>%
+  rename("PRE_mean_value" = "mean_value.x", "PRE_sd_value" = "sd_value.x", "POST_mean_value" = "mean_value.y", "POST_sd_value" = "sd_value.y")
+kable(percentage_summary, digits = 2, format = "markdown", caption = "Percentage of 1RM (PRE/POST) by Week")
+```
+
+
+
+```{r stuff, echo=FALSE}
+# from earlier chunk, volume_load_long
+# Calculate percentage change in volume load from one week to the next
+exercise_data <- volume_load_long %>%
+  group_by(Exercise) %>%
+  mutate(Percent_Change = (Volume_Load - lag(Volume_Load)) / lag(Volume_Load) * 100)
+
+file_name <- paste0(output_directory, "/", date, "VL_exercise_percent_change.xlsx")
+write_xlsx(exercise_data, file_name)
+
+# # Calculate mean and standard deviation of percentage changes for each exercise
+exercise_percent_changes <- exercise_data %>%
+  group_by(Exercise) %>%
+  summarise(
+    Mean_Percent_Change = mean(Percent_Change, na.rm = TRUE),
+    Stdev_Percent_Change = sd(Percent_Change, na.rm = TRUE),
+    Sum_Percent_Change = sum(Percent_Change, na.rm = TRUE),
+    Average_Percent_Change = sum(Percent_Change, na.rm = TRUE) / (n_distinct(Subject))
+  , groups = 'drop'  # Drop grouping
+  )
+kable(exercise_percent_changes, digits = 3, caption = "Exercise Percent Change Summary")
+
+file_name <- paste0(output_directory, "/", date, "VL_exercise_percent_change_summary.xlsx")
+write_xlsx(exercise_percent_changes, file_name)
+
+# Calculate mean and standard deviation of percentage changes for each exercise and subject
+exercise_percent_changes_subject <- exercise_data %>%
+  group_by(Exercise, Subject) %>%
+  summarise(
+    Mean_Percent_Change = mean(Percent_Change, na.rm = TRUE),
+    Stdev_Percent_Change = sd(Percent_Change, na.rm = TRUE),
+    Sum_Percent_Change = sum(Percent_Change, na.rm = TRUE),
+    First_Last_Percent_Change = (last(na.omit(Volume_Load)) - first(na.omit(Volume_Load))) / first(na.omit(Volume_Load)) * 100,
+    Max_Min_Percent_Change = (max(Volume_Load , na.rm = TRUE) - min(Volume_Load , na.rm = TRUE)) / min(Volume_Load , na.rm = TRUE) * 100,
+    Sum_Volume_Load = sum(Volume_Load[!is.na(Volume_Load)], na.rm = TRUE),
+    Average_Percent_Change = sum(Volume_Load[!is.na(Volume_Load)], na.rm = TRUE) / sum(!is.na(Volume_Load))
+  , groups = 'drop' )
+
+percent_change_per_subject <- percent_change_per_subject %>%
+  select(Subject, Exercise, Measure,  PRE_to_POST)
+combined_data <- left_join(exercise_percent_changes_subject, percent_change_per_subject, by = c("Exercise", "Subject"))
+# Print the result
+file_name <- paste0(output_directory, "/", date, "VL_exercise_percent_changes_bysubject.xlsx")
+write_xlsx(combined_data, file_name)
+```
+
+Correlation of volume load
+
+```{r Correlation analysis volume load by week and others, echo=FALSE}
+# Define pairs of variables to correlate
+variables <- c("Mean_Percent_Change", "Sum_Percent_Change", "Sum_Volume_Load",
+               "First_Last_Percent_Change", "Max_Min_Percent_Change")
+correlation_results <- exercise_data %>%
+  group_by(Exercise) %>%
+  summarise(
+    correlation = cor.test(Week, Volume_Load, method = "pearson", use = "complete.obs")$estimate,
+    p_value = cor.test(Week, Volume_Load, method = "pearson", use = "complete.obs")$p.value
+  )
+kable(correlation_results, digits = 3, caption = "Correlation between Week and Volume Load by Exercise")
+
+#There were no interesting results here and I don't see much value in displaying the data
+#might be worth coming back to with a fresh lens, but for now we exclude
+
+# # Assuming 'combined_data' has 'PRE_to_POST' for each 'Subject' and 'Exercise'
+# correlation_results <- combined_data %>%
+#   group_by(Exercise) %>%
+#   summarise(across(all_of(variables),
+#                    ~list(correlation = cor(.x, PRE_to_POST, use = "complete.obs"),
+#                          p_value = cor.test(.x, PRE_to_POST)$p.value),
+#                    .names = "{.col}_{.fn}")) %>%
+#   ungroup()
+#
+# # To unpack the list columns into separate correlation and p-value columns
+# correlation_results <- correlation_results %>%
+#   mutate(across(ends_with("_corr"), ~map(.x, `[[`, "correlation")),
+#          across(ends_with("_p_value"), ~map(.x, `[[`, "p_value")))
+# # This approach directly applies correlation within each exercise group context.
+#
+# # Using base R cor() function
+# cor_matrix_base <- cor(combined_data[, c("Mean_Percent_Change", "Sum_Percent_Change", "Sum_Volume_Load", "First_Last_Percent_Change", "Max_Min_Percent_Change", "PRE_to_POST")])
+# print(cor_matrix_base)
+# # Create an empty matrix for p-values
+# p_values_base <- matrix(NA, nrow(cor_matrix_base), ncol(cor_matrix_base))
+# # Loop through rows and columns to calculate p-values
+# for (i in 1:nrow(cor_matrix_base)) {
+#   for (j in 1:ncol(cor_matrix_base)) {
+#     if (i != j) {
+#       cor_test <- cor.test(cor_matrix_base[, i], cor_matrix_base[, j])
+#       p_values_base[i, j] <- cor_test$p.value
+#     }
+#   }
+# }
+
+# # Print correlation matrix and p-values
+# kable(cor_matrix_base, digits = 3, caption = "Correlation results for base function")
+# kable(p_values_base, digits = 3, caption = "P-values for correlation")
+#
+# # List to store correlation matrices
+# correlation_matrices <- list()
+# # Loop through each unique exercise to compute the correlation matrix
+# for (exercise in unique(combined_data$Exercise)) {
+#   subset_data <- filter(combined_data, Exercise == exercise)
+#   correlation_matrix <- cor(subset_data[, -c(1, 2, 10)], use = "complete.obs")  # Remove non-numeric columns
+#   correlation_matrices[[exercise]] <- correlation_matrix
+# }
+# # Loop through the list of correlation matrices and plot each one
+# for (exercise in names(correlation_matrices)) {
+#   correlation_matrix <- correlation_matrices[[exercise]]
+#
+#   # Plotting the correlogram
+#   corrplot::corrplot(correlation_matrix, method = "circle",
+#                      type = "upper",
+#                      title = paste("Correlogram of", exercise),
+#                      tl.col = "black", tl.srt = 45) # tl.srt adjusts the text label rotation
+# }
+#
+# # Define a function to calculate correlation and p-value
+# calculate_correlation <- function(df, var1, var2) {
+#   test_result <- cor.test(df[[var1]], df[[var2]])
+#   tidy_result <- tidy(test_result)
+#   return(tidy_result)
+# }
+#
+# # List of variables to correlate
+# variables_to_correlate <- c("Mean_Percent_Change", "Stdev_Percent_Change", "Sum_Percent_Change",
+#                             "First_Last_Percent_Change", "Max_Min_Percent_Change", "Sum_Volume_Load",
+#                             "Average_Percent_Change", "PRE_to_POST")
+# # Calculate correlations
+# correlation_results <- combined_data %>%
+#   group_by(Exercise) %>%
+#   do({
+#     exercise_data = .
+#     cor_list <- list()
+#     for (var1 in variables_to_correlate) {
+#       for (var2 in variables_to_correlate) {
+#         if (var1 != var2) {
+#           cor_result <- calculate_correlation(exercise_data, var1, var2)
+#           cor_result$var1 <- var1
+#           cor_result$var2 <- var2
+#           cor_list[[length(cor_list) + 1]] <- cor_result
+#         }
+#       }
+#     }
+#     bind_rows(cor_list)
+#   })
+#
+# If you're interested in filtering for correlations involving "PRE_to_POST"
+# correlation_results_filtered <- correlation_results %>%
+#   filter(var2 %in% c("PRE_to_POST")) %>%  # Adjust if you have more variables of interest
+#   filter(p.value < 0.05)
+
+# Use kable to format the filtered results as a table
+# kable(correlation_results_filtered, digits = 3, caption = "Significant Correlation Results")
+```
+
+# HIIT SESSION
+
+```{r HIIT, echo=FALSE, message=FALSE, warning=FALSE}
+# read in the Excel file
+mydata <- read_excel("MRP.xlsx", sheet = "Exercise session HIIT", skip = 3, col_names = FALSE)
+
+# Generate the new column names
+new_column_names <- c("Subject", "Bout")
+for (week in 1:12) {
+  new_column_names <- c(new_column_names, paste0(week, "HR"), paste0(week, "RPE"))
+}
+colnames(mydata) <- new_column_names
+
+# Filter rows where Subjects did not complete 12 weeks of testing
+mydata <- mydata %>%
+  filter(Subject != "SUB 4" & Subject != "SUB 5" & Subject != "SUB 13")
+
+# Convert the table to long format using gather
+data_long <- gather(mydata, key, value, -Subject, -Bout, na.rm = TRUE)
+# Separate the key column into week and measure columns
+data_long <- separate(data_long, key, into = c("week", "measure"), sep = "(?<=[0-9])(?=[A-Za-z])")
+# In this code, we use the regular expression pattern "(?<=[0-9])(?=[A-Za-z])" as the sep argument. This pattern uses positive
+# lookbehind (?<=[0-9]) to split the column where there is a numeric value before the character value, and
+# positive lookahead (?=[A-Za-z]) to split the column where there is a character value after the numeric value.
+# This way, we can correctly separate the key column into week and measure columns, even for double-digit numeric values.
+#Alternatively, the below code uses sep = # of characters.
+#data_long <- separate(data_long, key, into = c("week", "measure"), sep = 1)
+
+#convert load with calibrated chart levels to Watts
+data_frame <- data.frame(
+  Data = c(6, 9, 10, 11, 13, 14, 15, 16, 17, 17.5, 18, 19, 20, 21, 21, 22, 23, 24, 25),
+  Watt = seq(120, 300, by = 10)
+)
+#Filter load Rows, remove measure column, remove duplicates with distinct
+load_rows <- data_long %>%
+  filter(Bout == "Load") %>%
+ dplyr::select(-measure) %>%
+  distinct()%>%
+  mutate(value = as.numeric(value))
+
+# Join the dataframes to convert Load resistance raw levels to Watts
+converted_data <- load_rows %>%
+  left_join(data_frame, by = c("value" = "Data"))
+#This was necessary as some bouts in early weeks started far too light and we increased during the bout,
+#we averaged the levels, but this created non-integer values which must be interpolated from our calibrated chart
+converted_data <- converted_data %>%
+  mutate(Watt_Interpolated = ifelse(Bout == "Load", approx(value, Watt, xout = value)$y, value))
+
+load_rows <- converted_data %>%
+ dplyr::select(-Watt, -value) %>%
+  rename(Watts = Watt_Interpolated) %>%
+  filter(as.numeric(week) <= 10)
+
+# Calculate the mean and standard deviation per week for the filtered data
+load_summary <- load_rows %>%
+  group_by(week) %>%
+  summarise(mean_load = mean(Watts), sd_load = sd(Watts), .groups = "drop")
+
+# Convert the week column to factor with numeric levels in the desired order
+load_summary$week <- factor(load_summary$week, levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"))
+# Create the plot
+load_plot <- ggplot(load_summary, aes(x = week, y = mean_load)) +
+  geom_errorbar(aes(ymin = mean_load - sd_load, ymax = mean_load + sd_load), width = 0.25) +
+  geom_col(fill = dark_blue_color, width = 0.7) +
+  labs(x = "Week", y = "Watts", title = "HIIT Mean Load per Week") +
+  theme_minimal()+
+   theme(
+    panel.grid.major = element_blank(),  # Remove major grid lines
+    panel.grid.minor = element_blank(),  # Remove minor grid lines
+   )
+print(load_plot)
+file_name_plot <- paste0(output_directory, "/", date, "HIIT_session_load.png")
+ggsave(file_name_plot, load_plot, width = 11, height = 8.5, units = "in", dpi = 1200)
+
+# Calculate the mean and standard deviation per week for the filtered data
+load_summary <- load_rows %>%
+  mutate(TrainingStatus = ifelse(Subject %in% trained_subjects, "trained", "untrained")) %>%
+  group_by(week, TrainingStatus) %>%
+  summarise(mean_load = mean(Watts), sd_load = sd(Watts), .groups = "drop")
+
+# Convert the week column to factor with numeric levels in the desired order
+load_summary$week <- factor(load_summary$week, levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"))
+# Create the plot
+load_plot <- ggplot(load_summary, aes(x = week, y = mean_load)) +
+  geom_errorbar(aes(ymin = mean_load - sd_load, ymax = mean_load + sd_load), width = 0.25) +
+  geom_col(fill = dark_blue_color, width = 0.7) +
+  facet_wrap(~TrainingStatus) +
+  labs(x = "Week", y = "Watts", title = "HIIT Mean Load per Week") +
+  theme_minimal()+
+   theme(
+    panel.grid.major = element_blank(),  # Remove major grid lines
+    panel.grid.minor = element_blank(),  # Remove minor grid lines
+   )
+print(load_plot)
+
+# Extract, filter, and transform data in a single pipeline
+mean_load_rows <- data_long %>%
+  filter(Bout %in% c("Mean", "Max")) %>%
+ dplyr::select(-measure) %>%
+  mutate(
+    value = as.numeric(value),
+    Bout = ifelse(Bout == "Mean", "meanHR", ifelse(Bout == "Max", "MaxHR", Bout))
+  ) %>%
+  filter(value >= 25)  # Filter values under 25
+
+# Create a data frame
+age_frame <- data.frame(
+  Subject = c("SUB 3", "SUB 8", "SUB 10", "SUB 14", "SUB 17", "SUB 18", "SUB 2", "SUB 11", "SUB 19"),
+  Age = c(37, 28.9, 29.1, 33.8, 22.8, 33.6, 38, 20.7, 31.2)
+)
+# This uses the inner_join to merge mean_load_rows and age_frame, and then mutate to add the new columns.
+merged_data_age <- mean_load_rows %>%
+  inner_join(age_frame, by = "Subject") %>%
+  mutate(
+    APMHR = 220 - Age,
+    Percentage_APMHR = (value / APMHR) * 100
+  )
+mean_load_rows <- merged_data_age %>%
+  filter( (as.numeric(week) <= 10)) %>%
+  filter(!(week %in% c("11", "12")))
+
+# # Separate 'Load' and 'HR' values into separate tables
+ load_table <- load_rows %>%
+   filter(Bout == "Load") %>%
+  dplyr::select(Subject, week, Watts)
+
+# read in the data from the Excel file and create table of Wmax values
+Wmax_data <- read_excel("MRP.xlsx", sheet = "vo2data", col_names = TRUE) %>%
+  filter(Measure == "Wmax") %>%
+ dplyr::select(Subject, PRE)
+
+load_table <- load_table %>%
+  left_join(Wmax_data, by = "Subject") %>%
+  mutate(Percentage_Wmax = (Watts / PRE) * 100) %>%
+ dplyr::select(Subject, week, Percentage_Wmax)
+
+hr_table <- mean_load_rows %>%
+  filter(Bout == "MaxHR") %>%
+ dplyr::select(Subject, week, Percentage_APMHR)
+
+# Merge tables by 'Subject' and 'week'
+merged_data <- full_join(load_table, hr_table, by = c("Subject", "week"))
+ merged_data <- merged_data%>%
+  mutate(TrainingStatus = ifelse(Subject %in% trained_subjects, "trained", "untrained"))
+# Fit a linear model to the data
+model <- lm(Percentage_APMHR ~ Percentage_Wmax, data = merged_data)
+# Compute the R-squared value
+r2 <- summary(model)$r.squared
+# Create the plot
+load_hr_plot <- ggplot(merged_data, aes(x = Percentage_Wmax, y = Percentage_APMHR)) +
+  geom_point(aes(color = as.numeric(week), shape = TrainingStatus), size = 2) +
+  geom_smooth(method = "lm", se = FALSE, color = "red") + # Add linear regression line
+  labs(x = "%Wmax", y = "%APMHR", color = "Week") +
+  theme_minimal(base_size = 18) +  # Set base font size to 18
+  scale_color_gradient(low = "blue", high = "red") + # Apply gradient color scale
+  geom_hline(yintercept = c(85, 95), linetype="dashed", color = "black") +  # Add horizontal lines at 85 and 95
+  annotate("text", x = Inf, y = Inf, vjust = 1, hjust = 1,
+           label = paste("R^2 =", round(r2, 3)), # Add R^2 value as text
+           size = 4) +
+  theme_minimal()+
+  theme(
+    panel.grid.major = element_blank(),  # Remove major grid lines
+    panel.grid.minor = element_blank(),  # Remove minor grid lines
+    panel.border = element_blank(),  # Remove panel border
+    axis.line = element_line(color = "black"),  # Add black axis lines
+    axis.ticks = element_line(color = "black"),  # Add black tick marks
+    text = element_text(color = "black")  # Set text color to black
+    #legend.position = c(0.8, 0.4)  # Adjust legend position (if needed)
+  )
+# Print the plot
+print(load_hr_plot)
+file_name_plot <- paste0(output_directory, "/", date, "_MAX_HIIT_session_HR_Load_Scatter.png")
+ggsave(file_name_plot, load_hr_plot, width = 9, height = 6, units = "in", dpi = 1200)
+```
+
+Relative load age predicted maximal heart rate (APMHR) / percentage of maximal power output (Wmax)
+
+```{r Relative Load, echo=FALSE, message=FALSE, warning=FALSE}
+# Calculate the ratio of HR to Load
+ratio_summary <- merged_data %>%
+  mutate(HR_Load_Ratio = Percentage_APMHR / Percentage_Wmax)%>%
+  group_by(week, TrainingStatus) %>%
+  summarise(mean_ratio = mean(HR_Load_Ratio),
+            sd_ratio = sd(HR_Load_Ratio), groups = "drop")
+
+# Convert the week column to factor with numeric levels in the desired order
+ratio_summary$week <- factor(ratio_summary$week, levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"))
+
+# Fit separate linear models for each TrainingStatus group and calculate R-squared values
+ratio_summary <- ratio_summary %>%
+  group_by(TrainingStatus) %>%
+  do({
+    model <- lm(mean_ratio ~ as.numeric(week), data = .)
+    data.frame(., R_squared = summary(model)$r.squared)
+  }) %>%
+  ungroup()
+
+# Create the plot
+max_ratio_plot <- ggplot(ratio_summary, aes(x = week, y = mean_ratio)) +
+  geom_line() +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, aes(group = TrainingStatus, color = TrainingStatus)) + # Separate regression lines
+  geom_errorbar(aes(ymin = mean_ratio - sd_ratio, ymax = mean_ratio + sd_ratio), width = 0.25) +
+  facet_wrap(~TrainingStatus) +
+  labs(x = "Week", y = "HR/Load Ratio", title = "Max HR/Load Ratio by Training Status") +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    text = element_text(color = "black"),
+    legend.position = "none"
+  ) +
+  geom_text(aes(x = Inf, y = Inf, label = paste("R² =", round(R_squared, 3))), vjust = 2, hjust = 1.1, data = . %>% group_by(TrainingStatus) %>% summarise(R_squared = mean(R_squared))) # Add R-squared value for each facet
+print(max_ratio_plot)
+file_name_plot <- paste0(output_directory, "/", date, "_TvsU_max_ratio_plot.png")
+ggsave(file_name_plot, max_ratio_plot, width = 11, height = 8.5, units = "in", dpi = 1200)
+```
+
+maxHR
+
+```{r HIIT Max, echo=FALSE, message=FALSE, warning=FALSE}
+#### max
+hr_table <- mean_load_rows %>%
+  filter(Bout == "meanHR") %>%
+ dplyr::select(Subject, week, Percentage_APMHR)
+
+# Merge tables by 'Subject' and 'week'
+merged_data <- full_join(load_table, hr_table, by = c("Subject", "week"))
+ merged_data <- merged_data%>%
+  mutate(TrainingStatus = ifelse(Subject %in% trained_subjects, "trained", "untrained"))
+# Fit a linear model to the data
+model <- lm(Percentage_APMHR ~ Percentage_Wmax, data = merged_data)
+# Compute the R-squared value
+r2 <- summary(model)$r.squared
+# Create the plot
+load_hr_plot <- ggplot(merged_data, aes(x = Percentage_Wmax, y = Percentage_APMHR)) +
+  geom_point(aes(color = as.numeric(week), shape = TrainingStatus), size = 2) +
+  geom_smooth(method = "lm", se = FALSE, color = "red") + # Add linear regression line
+  labs(x = "%Wmax", y = "%APMHR", color = "Week") +
+  theme_minimal(base_size = 18) +  # Set base font size to 18
+  scale_color_gradient(low = "blue", high = "red") + # Apply gradient color scale
+  geom_hline(yintercept = c(85, 95), linetype="dashed", color = "black") +  # Add horizontal lines at 85 and 95
+  annotate("text", x = Inf, y = Inf, vjust = 1, hjust = 1,
+           label = paste("R^2 =", round(r2, 3)), # Add R^2 value as text
+           size = 4) +
+  theme_minimal()+
+  theme(
+    panel.grid.major = element_blank(),  # Remove major grid lines
+    panel.grid.minor = element_blank(),  # Remove minor grid lines
+    panel.border = element_blank(),  # Remove panel border
+    axis.line = element_line(color = "black"),  # Add black axis lines
+    axis.ticks = element_line(color = "black"),  # Add black tick marks
+    text = element_text(color = "black")  # Set text color to black
+    #legend.position = c(0.8, 0.4)  # Adjust legend position (if needed)
+  )
+# Print the plot
+print(load_hr_plot)
+file_name_plot <- paste0(output_directory, "/", date, "_mean_HIIT_session_HR_Load_Scatter.png")
+ggsave(file_name_plot, load_hr_plot, width = 9, height = 6, units = "in", dpi = 1200)
+
+# Calculate the ratio of HR to Load
+ratio_summary <- merged_data %>%
+  mutate(HR_Load_Ratio = Percentage_APMHR / Percentage_Wmax)%>%
+  group_by(week, TrainingStatus) %>%
+  summarise(mean_ratio = mean(HR_Load_Ratio),
+            sd_ratio = sd(HR_Load_Ratio), groups = "drop")
+
+# Convert the week column to factor with numeric levels in the desired order
+ratio_summary$week <- factor(ratio_summary$week, levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"))
+
+# Fit separate linear models for each TrainingStatus group and calculate R-squared values
+ratio_summary <- ratio_summary %>%
+  group_by(TrainingStatus) %>%
+  do({
+    model <- lm(mean_ratio ~ as.numeric(week), data = .)
+    data.frame(., R_squared = summary(model)$r.squared)
+  }) %>%
+  ungroup()
+
+# Create the plot
+mean_ratio_plot <- ggplot(ratio_summary, aes(x = week, y = mean_ratio)) +
+  geom_line() +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, aes(group = TrainingStatus, color = TrainingStatus)) + # Separate regression lines
+  geom_errorbar(aes(ymin = mean_ratio - sd_ratio, ymax = mean_ratio + sd_ratio), width = 0.25) +
+  facet_wrap(~TrainingStatus) +
+  labs(x = "Week", y = "HR/Load Ratio", title = "Mean HR/Load Ratio by Training Status") +
+  theme_minimal() +
+  theme(
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    axis.line = element_line(color = "black"),
+    axis.ticks = element_line(color = "black"),
+    text = element_text(color = "black"),
+    legend.position = "none"
+  ) +
+  geom_text(aes(x = Inf, y = Inf, label = paste("R² =", round(R_squared, 3))), vjust = 2, hjust = 1.1, data = . %>% group_by(TrainingStatus) %>% summarise(R_squared = mean(R_squared))) # Add R-squared value for each facet
+print(mean_ratio_plot)
+file_name_plot <- paste0(output_directory, "/", date, "_TvsU_mean_ratio_plot.png")
+ggsave(file_name_plot, mean_ratio_plot, width = 11, height = 8.5, units = "in", dpi = 1200)
+
+```
+
+# HIFT
+
+```{r HIFT, echo=FALSE, message=FALSE, warning=FALSE}
+mydata <- read_excel("MRP.xlsx", sheet = "Session HIFT", col_names = TRUE) %>%
+  filter(Subject != "SUB 4" & Subject != "SUB 5" & Subject != "SUB 13" & Subject != "SUB 2")
+# Convert all week columns to numeric
+mydata[, 3:ncol(mydata)] <- sapply(mydata[, 3:ncol(mydata)], as.numeric)
+# Convert the data to a long format
+mydata_long <- mydata %>%
+  pivot_longer(
+    cols = starts_with("Week"),
+    names_to = "Week",
+    values_to = "Value"
+  ) %>%
+  filter(!is.na(Value)) %>%
+  mutate(Week = as.factor(sub("Week ", "", Week)))
+
+model <- aov(Value ~ Week + Error(Subject/Week), data = mydata_long)
+summary(model)
+
+# Summary table with mean, standard deviation, and p-values
+summary_table <- mydata_long %>%
+  filter( (as.numeric(Week) <= 10)) %>%
+  filter(!(Week %in% c("11", "12"))) %>%
+  group_by(Week) %>%
+  summarise(
+    mean_value = mean(Value, na.rm = TRUE),
+    stdev_value = sd(Value, na.rm = TRUE)
+  )
+# Convert the week column to factor with numeric levels in the desired order
+summary_table$Week <- factor(summary_table$Week, levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"))
+# Plot
+bar_plot <- ggplot(summary_table, aes(x = Week, y = mean_value)) +
+  geom_errorbar(
+    aes(ymin = mean_value - stdev_value, ymax = mean_value + stdev_value),
+    width = 0.2
+  ) +
+  geom_bar(stat = "identity", fill = dark_blue_color) +
+  geom_text(
+    data = subset(summary_table, Week %in% c("3", "5", "6", "7", "9")),
+    aes(y = mean_value + stdev_value + 2, label = "*"),
+    position = position_dodge(width = 0.9),
+    size = 10
+  ) +
+  labs(x = "Week", y = "Reps") +
+  theme_bw()+
+theme(
+  panel.grid.major = element_blank(),  # Remove major grid lines
+  panel.grid.minor = element_blank(),  # Remove minor grid lines
+  panel.border = element_blank(),  # Remove panel border
+  # axis.line = element_line(color = "black")
+  )  # Add axes lines
+print(bar_plot)
+file_name_plot <- paste0(output_directory, "/", date, "HIFT_session.png")
+ggsave(file_name_plot, bar_plot, width = 8, height = 5, units = "in", dpi = 1200)
+
+mydata_long <- mydata_long %>%
+  mutate(TrainingStatus = ifelse(Subject %in% trained_subjects, "trained", "untrained"))
+
+# Calculate the reference "Value" for week 1 for each subject
+week1_reference <- mydata_long %>%
+  filter(Week == 1) %>%
+ dplyr::select(Subject, Week1_Value = Value)
+# Join this reference back to the original data
+mydata_long_with_reference <- left_join(mydata_long, week1_reference, by = "Subject")
+# Calculate % change from week 1
+mydata_long_with_reference <- mydata_long_with_reference %>%
+  mutate(Percent_Change = ((Value - Week1_Value) / Week1_Value) * 100) %>%
+  filter(Week != c(8, 11))  # Remove week 1 from the data
+
+# Create the summary table for mydata_long_with_reference
+summary_table_with_pvalues_and_change <- mydata_long_with_reference %>%
+  group_by(Week, TrainingStatus)%>%
+  summarise(
+    mean_value = mean(Value, na.rm = TRUE),
+    stdev_value = sd(Value, na.rm = TRUE),
+    mean_percent_change = mean(Percent_Change, na.rm = TRUE),
+    stdev_percent_change = sd(Percent_Change, na.rm = TRUE),
+    p_value_paired = t.test(Value, Week1_Value, paired = TRUE, na.rm = TRUE)$p.value,
+    p_value_percent_change = t.test(Percent_Change, mu = 0, na.rm = TRUE)$p.value
+  )
+
+summary_table_filtered <- summary_table_with_pvalues_and_change %>%
+  filter(if_any(c(p_value_paired, p_value_percent_change), ~ . < 0.05))
+kable(summary_table_filtered, digits = 2, caption = "Summary table with mean, standard deviation, and p-values")
+
+# Summary table with mean, standard deviation, and p-values
+summary_table <- mydata_long %>%
+  filter( (as.numeric(Week) <= 10)) %>%
+  filter(!(Week %in% c("11", "12"))) %>%
+  group_by(Week, TrainingStatus) %>%
+  summarise(
+    mean_value = mean(Value, na.rm = TRUE),
+    stdev_value = sd(Value, na.rm = TRUE)
+  )
+# Convert the week column to factor with numeric levels in the desired order
+summary_table$Week <- factor(summary_table$Week, levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10"))
+# Plot
+bar_plot <- ggplot(summary_table, aes(x = Week, y = mean_value)) +
+  geom_errorbar(
+    aes(ymin = mean_value - stdev_value, ymax = mean_value + stdev_value),
+    width = 0.2
+  ) +
+  facet_wrap(~TrainingStatus) +
+  geom_bar(stat = "identity", fill = dark_blue_color) +
+  # geom_text(
+  #   data = subset(summary_table, Week %in% c("3", "5", "6", "7", "9")),
+  #   aes(y = mean_value + stdev_value + 2, label = "*"),
+  #   position = position_dodge(width = 0.9),
+  #   size = 10
+  # ) +
+  labs(x = "Week", y = "Reps") +
+  theme_bw()+
+theme(
+  panel.grid.major = element_blank(),  # Remove major grid lines
+  panel.grid.minor = element_blank(),  # Remove minor grid lines
+  panel.border = element_blank(),  # Remove panel border
+  # axis.line = element_line(color = "black")
+  )  # Add axes lines
+print(bar_plot)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```
+```
+```
+```
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,32 @@
+# R / RStudio
+.Rproj.user/
+.RData
+.Rhistory
+.Ruserdata
+
+# Rendered output (regenerate from source)
+*.html
+*_files/
+*_output/
+Rplots.pdf
+
+# renv library (lock file is tracked; library is restored from it)
+renv/library/
+renv/staging/
+renv/sandbox/
+renv/cellar/
+renv/local/
+renv/python/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Large/binary files that shouldn't be in git
+*.png
+*.pdf
+*.pptx
+*.docx
+
+# DATA folder raw files (large, tracked separately if needed)
+# DATA/
