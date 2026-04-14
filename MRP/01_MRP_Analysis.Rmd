@@ -3212,7 +3212,7 @@ ggsave(file_name_plot, plot = YY_plot, width = 6, height = 4, dpi = 1200)
 
 ## Weekly resistance training load progression over 10 weeks
 
-```{r Session, }
+```{r Session, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
 # Create 1RM table to compare to
 RM1_data_PRE <- mydata_1rm %>%
   dplyr::select(Subject, Exercise, PRE)
@@ -3276,8 +3276,14 @@ for (exercise in unique(data$Exercise)) {
                                                        hedges_g = g_value))
   }
 }
-significant_results <- filter(all_results_df, p.value < 0.1)
-kable(significant_results, digits = 3, caption = "Significant differences in load compared to week 1 (with effect sizes)")
+significant_results <- filter(all_results_df, p.value < 0.1) %>%
+  mutate(
+    p.value = fmt_p(p.value),
+    hedges_g = fmt_g(hedges_g)
+  )
+cat(as.character(create_styled_kable(significant_results,
+  caption = "Significant differences in load vs. week 1 (with effect sizes)",
+  escape = FALSE)))
 
 # Calculate the mean and standard deviation for each exercise-week combination
 exercise_summary <- data %>%
@@ -3337,7 +3343,7 @@ ggsave(file_name_plot, plot = arranged_plots, width = 6, height = 4, dpi = 1200)
 
 ## Weekly volume load progression over 10 weeks
 
-```{r volume load calculation, echo=FALSE, message=FALSE, warning=FALSE}
+```{r volume load calculation, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
 
 # Quick Mean and SD of Repetitions Data
 # Load and process repetitions data from Exercise Session RT
@@ -3402,30 +3408,26 @@ reps_by_training <- reps_data %>%
     .groups = 'drop'
   )
 
-# Display results using kable (matching your document style)
-cat("=== OVERALL REPETITIONS SUMMARY ===\n")
-kable(overall_reps_summary, 
-      digits = 1,
-      caption = "Overall repetitions summary across all exercises and weeks",
-      col.names = c("N", "Mean", "SD", "Median", "Min", "Max", "Mean±SD"))
+# Display results using create_styled_kable
+cat(as.character(create_styled_kable(overall_reps_summary,
+  caption = "Overall repetitions summary across all exercises and weeks",
+  digits = 1,
+  col.names = c("N", "Mean", "SD", "Median", "Min", "Max", "Mean\u00B1SD"))))
 
-cat("\n=== REPETITIONS BY EXERCISE ===\n")
-kable(reps_by_exercise, 
-      digits = 1,
-      caption = "Repetitions summary by exercise",
-      col.names = c("Exercise", "N", "Mean", "SD", "Mean±SD"))
+cat(as.character(create_styled_kable(reps_by_exercise,
+  caption = "Repetitions summary by exercise",
+  digits = 1,
+  col.names = c("Exercise", "N", "Mean", "SD", "Mean\u00B1SD"))))
 
-cat("\n=== REPETITIONS BY WEEK ===\n")
-kable(reps_by_week, 
-      digits = 1,
-      caption = "Repetitions summary by training week",
-      col.names = c("Week", "N", "Mean", "SD", "Mean±SD"))
+cat(as.character(create_styled_kable(reps_by_week,
+  caption = "Repetitions summary by training week",
+  digits = 1,
+  col.names = c("Week", "N", "Mean", "SD", "Mean\u00B1SD"))))
 
-cat("\n=== REPETITIONS BY TRAINING STATUS ===\n")
-kable(reps_by_training, 
-      digits = 1,
-      caption = "Repetitions summary by training status",
-      col.names = c("Training Status", "N", "Mean", "SD", "Mean±SD"))
+cat(as.character(create_styled_kable(reps_by_training,
+  caption = "Repetitions summary by training status",
+  digits = 1,
+  col.names = c("Training Status", "N", "Mean", "SD", "Mean\u00B1SD"))))
 
 # Quick statistical test: Are repetitions different between trained/untrained?
 reps_t_test <- t.test(Reps ~ TrainingStatus, data = reps_data)
@@ -3482,8 +3484,11 @@ for (exercise in unique(volume_load_long$Exercise)) {
                                                        Week = week,
                                                        p.value = t_test_result$p.value))  }
 }
-significant_results <- filter(all_results_df, p.value < 0.1)
-kable(significant_results, digits = 3, caption = "Significant differences in volume load between week 1 and other weeks (There are none)")
+significant_results <- filter(all_results_df, p.value < 0.1) %>%
+  mutate(p.value = fmt_p(p.value))
+cat(as.character(create_styled_kable(significant_results,
+  caption = "Significant differences in volume load (week 1 vs others)",
+  escape = FALSE)))
 
 # Calculate the mean and standard deviation for each exercise-week combination
 exercise_summary <- volume_load_long %>%
@@ -3522,7 +3527,7 @@ ggsave(file_name_plot, plot = arranged_plots, width = 6, height = 4, dpi = 300)
 
 ## Volume load progression as a percentage of PRE 1RM
 
-```{r volume load calculation2, echo=FALSE, message=FALSE, warning=FALSE}
+```{r volume load calculation2, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
 # Load and preprocess session data
 reps_data <- read_excel("MRP.xlsx", sheet = "Exercise Session RT", col_names = TRUE) %>%
   mutate(Exercise = dplyr::recode(Exercise, !!!replacements)) %>%
@@ -3603,9 +3608,10 @@ weekly_summary <- combined_percentage_data %>%
   )
 
 # Display weekly summary
-kable(weekly_summary, digits = 2, 
-      caption = "Weekly summary of mean relative volume load across all exercises",
-      col.names = c("Week", "n", "Mean (%1RM×Reps)", "SD", "SE", "Mean±SD"))
+cat(as.character(create_styled_kable(weekly_summary,
+  caption = "Weekly summary of mean relative volume load across all exercises",
+  digits = 2,
+  col.names = c("Week", "n", "Mean (%1RM\u00D7Reps)", "SD", "SE", "Mean\u00B1SD"))))
 
 # Paired t-tests comparing each week to week 1
 paired_results <- tibble(
@@ -3685,11 +3691,19 @@ paired_results <- paired_results %>%
 significant_paired_results <- paired_results %>%
   filter(p_value < 0.1)
 
-kable(significant_paired_results, digits = 3,
-      caption = "Significant changes in mean relative volume load from Week 1 (p < 0.1)",
-      col.names = c("Week", "Week 1 Mean", "Current Week Mean", "Mean Diff", 
-                   "t", "df", "p-value", "95% CI Lower", "95% CI Upper", 
-                   "Hedges' g", "Significance", "Effect Size"))
+sig_paired_display <- significant_paired_results %>%
+  mutate(
+    p_value = fmt_p(p_value),
+    hedges_g = fmt_g(hedges_g)
+  ) %>%
+  dplyr::select(-significance)  # redundant with fmt_p coloring
+
+cat(as.character(create_styled_kable(sig_paired_display,
+  caption = "Significant changes in mean relative volume load from Week 1 (p < 0.1)",
+  escape = FALSE,
+  col.names = c("Week", "Week 1 Mean", "Current Week Mean", "Mean Diff",
+                "t", "df", "p-value", "95% CI Lower", "95% CI Upper",
+                "Hedges' g", "Effect Size"))))
 
 # Overall trend analysis: Linear regression
 trend_model <- lm(Mean_Percent_Volume ~ Week, data = combined_percentage_data)
@@ -3829,8 +3843,14 @@ for (exercise in unique(percentage_volume_data$Exercise)) {
 }
 
 # Filter for significant results (p < 0.05)
-significant_results <- filter(all_results_df, p.value < 0.05)
-kable(significant_results, digits = 3, caption = "Significant differences in relative volume load compared to week 1 (with effect sizes)")
+significant_results <- filter(all_results_df, p.value < 0.05) %>%
+  mutate(
+    p.value = fmt_p(p.value),
+    hedges_g = fmt_g(hedges_g)
+  )
+cat(as.character(create_styled_kable(significant_results,
+  caption = "Significant differences in relative volume load vs. week 1 (with effect sizes)",
+  escape = FALSE)))
 
 # Create exercise summary for plotting
 exercise_summary <- percentage_volume_data %>%
@@ -4256,11 +4276,16 @@ for (ex in unique(percentage_data$Exercise)) {
   ))
 }
 
-# Display results in a kable table
-kable(results_df,
-      col.names = c("Exercise", "p-value", "Hedges' g"),
-      digits = c(NA, 3, 2),
-      caption = "Paired t-test results comparing Week 1 and Week 10 load percentages")
+# Display results with cell_spec formatting
+results_display <- results_df %>%
+  mutate(
+    p_value = fmt_p(p_value),
+    hedges_g = fmt_g(hedges_g)
+  )
+cat(as.character(create_styled_kable(results_display,
+  caption = "Paired t-test: Week 1 vs Week 10 load percentages",
+  escape = FALSE,
+  col.names = c("Exercise", "p-value", "Hedges' g"))))
 
 # Calculate overall paired t-test (combining all exercises)
 # First, prepare the data in the right format
@@ -4293,11 +4318,18 @@ overall_result <- tibble(
   hedges_g = hedges_g
 )
 
-# Display result in a kable table
-kable(overall_result,
-      col.names = c("Comparison", "t-value", "df", "Mean Difference", "p-value", "Hedges' g"),
-      digits = c(NA, 2, 0, 3, 3, 2),
-      caption = "Overall paired t-test comparing Week 1 and Week 10 load percentages")
+# Display result with cell_spec formatting
+overall_display <- overall_result %>%
+  mutate(
+    t_value = fmt2(t_value),
+    mean_diff = fmt3(mean_diff),
+    p_value = fmt_p(p_value),
+    hedges_g = fmt_g(hedges_g)
+  )
+cat(as.character(create_styled_kable(overall_display,
+  caption = "Overall paired t-test: Week 1 vs Week 10 load percentages",
+  escape = FALSE,
+  col.names = c("Comparison", "t-value", "df", "Mean Difference", "p-value", "Hedges' g"))))
 ```
 
 ## Volume load progression as a percentage of POST 1RM
@@ -4404,12 +4436,13 @@ ggsave(file_name_plot, plot = arranged_plots, width = 6, height = 4, dpi = 1200)
 #Combine percentage_summary_PRE and Percentage_summary_POST side by side
 percentage_summary <- left_join(percentage_summary_PRE, percentage_summary_POST, by = c("Exercise", "Week")) %>%
   rename("PRE_mean_value" = "mean_value.x", "PRE_sd_value" = "sd_value.x", "POST_mean_value" = "mean_value.y", "POST_sd_value" = "sd_value.y")
-kable(percentage_summary, digits = 2, format = "markdown", caption = "Percentage of 1RM (PRE/POST) by Week")
+cat(as.character(create_styled_kable(percentage_summary,
+  caption = "Percentage of 1RM (PRE/POST) by Week", digits = 2)))
 ```
 
 
 
-```{r stuff, echo=FALSE}
+```{r stuff, echo=FALSE, results='asis'}
 # from earlier chunk, volume_load_long
 # Calculate percentage change in volume load from one week to the next
 exercise_data <- volume_load_long %>%
@@ -4429,7 +4462,8 @@ exercise_percent_changes <- exercise_data %>%
     Average_Percent_Change = sum(Percent_Change, na.rm = TRUE) / (n_distinct(Subject))
   , groups = 'drop'  # Drop grouping
   )
-kable(exercise_percent_changes, digits = 3, caption = "Exercise Percent Change Summary")
+cat(as.character(create_styled_kable(exercise_percent_changes,
+  caption = "Exercise Percent Change Summary", digits = 3)))
 
 file_name <- paste0(output_directory, "/", date, "VL_exercise_percent_change_summary.xlsx")
 write_xlsx(exercise_percent_changes, file_name)
@@ -4457,7 +4491,7 @@ write_xlsx(combined_data, file_name)
 
 ## Correlation of volume load
 
-```{r Correlation analysis volume load by week and others, echo=FALSE}
+```{r Correlation analysis volume load by week and others, echo=FALSE, results='asis'}
 # Define pairs of variables to correlate
 # Define pairs of variables to correlate
 variables <- c("Mean_Percent_Change", "Sum_Percent_Change", "Sum_Volume_Load",
@@ -4474,7 +4508,8 @@ week_load_correlation <- exercise_data %>%
   ungroup()
 
 # Display the correlation results
-kable(week_load_correlation, digits = 3, caption = "Correlation between Week and Volume Load by Exercise")
+cat(as.character(create_styled_kable(week_load_correlation,
+  caption = "Correlation between Week and Volume Load by Exercise", digits = 3)))
 
 # Create a clean summary data frame from exercise_data
 clean_combined_data <- exercise_data %>%
@@ -4540,8 +4575,10 @@ for (i in 1:nrow(cor_matrix_base)) {
 }
 
 # Print correlation matrix and p-values
-kable(cor_matrix_base, digits = 3, caption = "Correlation results for base function")
-kable(p_values_base, digits = 3, caption = "P-values for correlation")
+cat(as.character(create_styled_kable(cor_matrix_base,
+  caption = "Correlation results", digits = 3)))
+cat(as.character(create_styled_kable(p_values_base,
+  caption = "P-values for correlation", digits = 3)))
 
 # List to store correlation matrices
 correlation_matrices <- list()
@@ -4610,7 +4647,8 @@ correlation_results_filtered <- correlation_results %>%
   filter(p.value < 0.05)
 
 # Use kable to format the filtered results as a table
-kable(correlation_results_filtered, digits = 3, caption = "Significant Correlation Results")
+cat(as.character(create_styled_kable(correlation_results_filtered,
+  caption = "Significant Correlation Results", digits = 3)))
 
 # Optionally, visualize the relationship between significant variables and PRE_to_POST
 for (i in 1:nrow(correlation_results_filtered)) {
@@ -4841,7 +4879,8 @@ for(test_week in available_weeks) {
 }
 
 # Display results
-kable(wmax_results, caption = "Week 1 vs Other Weeks (%Wmax) - Paired t-tests")
+cat(as.character(create_styled_kable(wmax_results,
+  caption = "Week 1 vs Other Weeks (%Wmax) - Paired t-tests")))
 
 # Quick summary
 sig_results <- wmax_results[wmax_results$p_value < 0.05, ]
@@ -5067,10 +5106,11 @@ wmax_sig_summary <- wmax_significance_results %>%
   )
 
 if(nrow(wmax_sig_summary) > 0) {
-  kable(wmax_sig_summary %>% select(comparison, mean_wmax, formatted_p), 
-        digits = 3,
-        col.names = c("Comparison", "Mean %Wmax", "p-value"),
-        caption = "Significant changes in %Wmax from Week 1")
+  cat(as.character(create_styled_kable(
+    wmax_sig_summary %>% select(comparison, mean_wmax, formatted_p),
+    caption = "Significant changes in %Wmax from Week 1",
+    digits = 3,
+    col.names = c("Comparison", "Mean %Wmax", "p-value"))))
 } else {
   cat("No significant changes in %Wmax compared to Week 1 (p < 0.1)\n")
 }
@@ -5163,7 +5203,7 @@ wmax_load_plot <- wmax_boxplot
 
 ## Relative load age predicted maximal heart rate (APMHR) / percentage of maximal power output (Wmax)
 
-```{r Relative Load, echo=FALSE, message=FALSE, warning=FALSE}
+```{r Relative Load, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
 # Calculate the ratio of HR to Load
 ratio_summary <- merged_data %>%
   mutate(HR_Load_Ratio = Percentage_APMHR / Percentage_Wmax) %>%
@@ -5371,10 +5411,11 @@ sig_summary <- significance_results %>%
   )
 
 if(nrow(sig_summary) > 0) {
-  kable(sig_summary %>% select(comparison, mean_ratio, formatted_p), 
-        digits = 3,
-        col.names = c("Comparison", "Mean Ratio", "p-value"),
-        caption = "Significant changes in HR/Load ratio from Week 1")
+  cat(as.character(create_styled_kable(
+    sig_summary %>% select(comparison, mean_ratio, formatted_p),
+    caption = "Significant changes in HR/Load ratio from Week 1",
+    digits = 3,
+    col.names = c("Comparison", "Mean Ratio", "p-value"))))
 } else {
   cat("No significant changes in HR/Load ratio compared to Week 1 (p < 0.1)\n")
 }
@@ -5463,7 +5504,7 @@ hr_load_ratio_plot <- ratio_boxplot
 
 ## maxHR
 
-```{r HIIT Max, echo=FALSE, message=FALSE, warning=FALSE}
+```{r HIIT Max, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
 #### max
 hr_table <- mean_load_rows %>%
   filter(Bout == "meanHR") %>%
@@ -5548,7 +5589,7 @@ ggsave(file_name_plot, mean_ratio_plot, width = 11, height = 8.5, units = "in", 
 
 # HIFT
 
-```{r HIFT, echo=FALSE, message=FALSE, warning=FALSE}
+```{r HIFT, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
 # HIFT Analysis - High-Intensity Functional Training
 # Load and preprocess data
 mydata <- read_excel("MRP.xlsx", sheet = "Session HIFT", col_names = TRUE) %>%
@@ -5635,8 +5676,11 @@ summary_table_with_pvalues_and_change <- mydata_long_with_reference %>%
 summary_table_filtered <- summary_table_with_pvalues_and_change %>%
   filter(p_value_paired < 0.05)
 
-kable(summary_table_filtered, digits = 2, 
-      caption = "Weeks showing significant improvement from baseline")
+sum_filt_display <- summary_table_filtered %>%
+  mutate(p_value_paired = fmt_p(p_value_paired))
+cat(as.character(create_styled_kable(sum_filt_display,
+  caption = "Weeks showing significant improvement from baseline",
+  escape = FALSE, digits = 2)))
 
 # Correlation analysis
 mydata_filtered <- mydata_filtered %>%
@@ -5663,8 +5707,11 @@ subject_correlations <- mydata_filtered %>%
   ) %>%
   arrange(desc(correlation))
 
-kable(subject_correlations, digits = 3,
-      caption = "Individual subject correlations with training week")
+sub_corr_display <- subject_correlations %>%
+  mutate(p_value = fmt_p(p_value))
+cat(as.character(create_styled_kable(sub_corr_display,
+  caption = "Individual subject correlations with training week",
+  escape = FALSE, digits = 3)))
 
 # Session completion analysis
 session_completion <- mydata_long %>%
@@ -5678,10 +5725,10 @@ session_completion <- mydata_long %>%
   ) %>%
   arrange(desc(completion_rate))
 
-kable(session_completion,
-      caption = "Session completion by subject",
-      col.names = c("Subject", "Training Status", "Sessions Completed", 
-                   "Total Possible", "Completion Rate (%)", "Missing Weeks"))
+cat(as.character(create_styled_kable(session_completion,
+  caption = "Session completion by subject",
+  col.names = c("Subject", "Training Status", "Sessions Completed",
+                "Total Possible", "Completion Rate (%)", "Missing Weeks"))))
 
 # Nature-style visualization
 max_height <- max(mydata_filtered$Value, na.rm = TRUE) * 1.05
@@ -5845,8 +5892,11 @@ HIFT_sig_data <- tibble(Week = sig_weeks) %>%
 summary_table_filtered <- summary_table_with_pvalues_and_change %>%
   filter(p_value_paired < 0.05)
 
-kable(summary_table_filtered, digits = 2, 
-      caption = "Weeks showing significant improvement from baseline")
+sum_filt_display <- summary_table_filtered %>%
+  mutate(p_value_paired = fmt_p(p_value_paired))
+cat(as.character(create_styled_kable(sum_filt_display,
+  caption = "Weeks showing significant improvement from baseline",
+  escape = FALSE, digits = 2)))
 
 # Correlation analysis
 mydata_filtered <- mydata_filtered %>%
@@ -5937,8 +5987,11 @@ subject_correlations <- mydata_filtered %>%
   ) %>%
   arrange(desc(correlation))
 
-kable(subject_correlations, digits = 3,
-      caption = "Individual subject correlations with training week")
+sub_corr_display <- subject_correlations %>%
+  mutate(p_value = fmt_p(p_value))
+cat(as.character(create_styled_kable(sub_corr_display,
+  caption = "Individual subject correlations with training week",
+  escape = FALSE, digits = 3)))
 
 # Session completion analysis
 session_completion <- mydata_long %>%
@@ -5952,10 +6005,10 @@ session_completion <- mydata_long %>%
   ) %>%
   arrange(desc(completion_rate))
 
-kable(session_completion,
-      caption = "Session completion by subject",
-      col.names = c("Subject", "Training Status", "Sessions Completed", 
-                   "Total Possible", "Completion Rate (%)", "Missing Weeks"))
+cat(as.character(create_styled_kable(session_completion,
+  caption = "Session completion by subject",
+  col.names = c("Subject", "Training Status", "Sessions Completed",
+                "Total Possible", "Completion Rate (%)", "Missing Weeks"))))
 
 # Save the plot
 file_name_hift <- paste0(output_directory, "/", date, "_HIFT_performance_with_demographics.png")
