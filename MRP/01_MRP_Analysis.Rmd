@@ -862,6 +862,90 @@ The comprehensive analysis of 22 performance measures revealed substantial and p
 
 **Physiological adaptations appeared to require longer adaptation periods**, with most significant changes observed only in the PRE to POST comparison. This temporal dissociation suggests that strength and aerobic adaptations may follow different time courses in response to concurrent training.
 
+```{r inline-stats-build, echo=FALSE, message=FALSE, warning=FALSE}
+# Helper - look up a single value from summary_p_values1 by measure name
+.get_p1 <- function(measure, col) {
+  val <- summary_p_values1[[col]][summary_p_values1$Measure_Exercise == measure]
+  if (length(val) == 0) NA_real_ else val[1]
+}
+.get_p2 <- function(measure, status, col) {
+  df <- summary_p_values2
+  val <- df[[col]][df$Measure_Exercise == measure & df$TrainingStatus == status]
+  if (length(val) == 0) NA_real_ else val[1]
+}
+
+# Pre-compute per-subject PRE->POST percent changes for Block C ranges.
+# Replicates logic from the "Percent Change" chunk so this chunk does not
+# depend on objects computed further down the document.
+.pct_per_subject <- mydata_combined %>%
+  dplyr::filter(DataType == "Strength", Exercise != "Bent Row") %>%
+  dplyr::group_by(Subject, Measure, Exercise, TrainingStatus) %>%
+  dplyr::summarise(
+    PRE = mean(PRE, na.rm = TRUE),
+    MID = mean(MID, na.rm = TRUE),
+    POST = mean(POST, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  dplyr::rowwise() %>%
+  dplyr::mutate(pc = list(calculate_percent_change(PRE, MID, POST))) %>%
+  tidyr::unnest(pc)
+
+.pct_exercise_means <- .pct_per_subject %>%
+  dplyr::group_by(Measure, Exercise) %>%
+  dplyr::summarise(PRE_to_POST_Mean = mean(PRE_to_POST, na.rm = TRUE),
+                   .groups = "drop")
+
+inline_stats <- list(
+  # --- Block A: overall strength/physiological adaptations ---
+  strength_g_min = min(
+    summary_p_values1$hedges_g_pre_post[grepl("^1RM_|^10RM_", summary_p_values1$Measure_Exercise)],
+    na.rm = TRUE
+  ),
+  strength_g_max = max(
+    summary_p_values1$hedges_g_pre_post[grepl("^1RM_|^10RM_", summary_p_values1$Measure_Exercise)],
+    na.rm = TRUE
+  ),
+  deadlift_10rm_g_pre_post   = .get_p1("10RM_Deadlift",   "hedges_g_pre_post"),
+  leg_press_1rm_g_pre_post   = .get_p1("1RM_Leg Press",   "hedges_g_pre_post"),
+  ohp_1rm_g_pre_post         = .get_p1("1RM_OHP",         "hedges_g_pre_post"),
+  ohp_10rm_g_pre_post        = .get_p1("10RM_OHP",        "hedges_g_pre_post"),
+  seated_row_10rm_g_pre_post = .get_p1("10RM_Seated Row", "hedges_g_pre_post"),
+  seated_row_10rm_p_pre_post = .get_p1("10RM_Seated Row", "p_val_pre_post"),
+  vo2max_g_pre_post          = .get_p1("VO2Max",          "hedges_g_pre_post"),
+  vo2max_p_pre_post          = .get_p1("VO2Max",          "p_val_pre_post"),
+  vo2peak_g_pre_post         = .get_p1("VO2Peak",         "hedges_g_pre_post"),
+  wmax_p_pre_mid             = .get_p1("Wmax",            "p_val_pre_mid"),
+  wmax_g_pre_mid             = .get_p1("Wmax",            "hedges_g_pre_mid"),
+  wmax_p_pre_post            = .get_p1("Wmax",            "p_val_pre_post"),
+  wmax_g_pre_post            = .get_p1("Wmax",            "hedges_g_pre_post"),
+
+  # --- Block B: trained vs untrained (emmeans interaction) ---
+  vo2max_g_trained_pre_post   = .get_p2("VO2Max",         "trained",   "hedges_g_pre_post"),
+  vo2max_p_trained_pre_post   = .get_p2("VO2Max",         "trained",   "p_val_pre_post"),
+  vo2max_g_untrained_pre_post = .get_p2("VO2Max",         "untrained", "hedges_g_pre_post"),
+  ohp_10rm_g_trained          = .get_p2("10RM_OHP",       "trained",   "hedges_g_pre_post"),
+  ohp_10rm_g_untrained        = .get_p2("10RM_OHP",       "untrained", "hedges_g_pre_post"),
+  ohp_1rm_g_trained           = .get_p2("1RM_OHP",        "trained",   "hedges_g_pre_post"),
+  ohp_1rm_g_untrained         = .get_p2("1RM_OHP",        "untrained", "hedges_g_pre_post"),
+  deadlift_10rm_g_trained     = .get_p2("10RM_Deadlift",  "trained",   "hedges_g_pre_post"),
+  deadlift_10rm_g_untrained   = .get_p2("10RM_Deadlift",  "untrained", "hedges_g_pre_post"),
+  deadlift_1rm_g_trained      = .get_p2("1RM_Deadlift",   "trained",   "hedges_g_pre_post"),
+  deadlift_1rm_g_untrained    = .get_p2("1RM_Deadlift",   "untrained", "hedges_g_pre_post"),
+  seated_row_10rm_g_trained   = .get_p2("10RM_Seated Row","trained",   "hedges_g_pre_post"),
+  seated_row_10rm_g_untrained = .get_p2("10RM_Seated Row","untrained", "hedges_g_pre_post"),
+
+  # --- Block C: percent changes (derived locally above) ---
+  pct_change_10rm_range = {
+    rng <- range(.pct_exercise_means$PRE_to_POST_Mean[.pct_exercise_means$Measure == "10RM"], na.rm = TRUE)
+    list(min = rng[1], max = rng[2])
+  },
+  pct_change_1rm_range = {
+    rng <- range(.pct_exercise_means$PRE_to_POST_Mean[.pct_exercise_means$Measure == "1RM"], na.rm = TRUE)
+    list(min = rng[1], max = rng[2])
+  }
+)
+```
+
 ### Key Findings Summary
 
 - **Universal strength improvements**: All 12 strength measures showed significant gains (*p* < 0.001)
@@ -873,6 +957,16 @@ The comprehensive analysis of 22 performance measures revealed substantial and p
 - **High individual reliability**: ICC values >0.75 for most measures confirmed consistent individual responses
 
 The results demonstrate that concurrent resistance and aerobic training effectively improved strength performance while maintaining aerobic capacity, with strength adaptations being more pronounced and occurring across a broader range of measures than physiological adaptations.
+
+<div style="background:#f5f9ff; border-left:4px solid #6699CC; padding:8px 12px; margin:8px 0; font-size:0.95em;">
+<strong>Auto-generated from model output (for comparison -- delete one version when decided):</strong>
+
+All strength measures showed PRE-POST improvements with effect sizes ranging *g* = `r fmt2(inline_stats$strength_g_min)` to `r fmt2(inline_stats$strength_g_max)`. The largest strength effect was 10RM Deadlift (*g* = `r fmt2(inline_stats$deadlift_10rm_g_pre_post)`); 1RM Leg Press also showed substantial improvement (*g* = `r fmt2(inline_stats$leg_press_1rm_g_pre_post)`). Upper-body adaptations included 1RM OHP (*g* = `r fmt2(inline_stats$ohp_1rm_g_pre_post)`) and 10RM OHP (*g* = `r fmt2(inline_stats$ohp_10rm_g_pre_post)`).
+
+10RM Seated Row improved from PRE to POST only (*p* = `r fmt_p_text(inline_stats$seated_row_10rm_p_pre_post)`, *g* = `r fmt2(inline_stats$seated_row_10rm_g_pre_post)`), suggesting delayed adaptation.
+
+Aerobic: VO~2~Max improved PRE-POST (*p* = `r fmt_p_text(inline_stats$vo2max_p_pre_post)`, *g* = `r fmt2(inline_stats$vo2max_g_pre_post)`); VO~2~Peak showed a smaller effect (*g* = `r fmt2(inline_stats$vo2peak_g_pre_post)`). Wmax increased at mid-point (*p* = `r fmt_p_text(inline_stats$wmax_p_pre_mid)`, *g* = `r fmt2(inline_stats$wmax_g_pre_mid)`) and continued to POST (*p* = `r fmt_p_text(inline_stats$wmax_p_pre_post)`, *g* = `r fmt2(inline_stats$wmax_g_pre_post)`).
+</div>
 
 ```{r display summary table, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
 cat(as.character(
@@ -1035,6 +1129,19 @@ The analysis comparing aerobically trained and untrained participants revealed d
 - **Power output improvements**: Both groups significantly increased Wmax, with larger absolute gains in trained participants
 
 The results demonstrate that while both trained and untrained individuals benefit substantially from resistance training, pre-existing aerobic fitness may enhance the magnitude and rate of strength adaptations, particularly for complex upper body movements.
+
+<div style="background:#f5f9ff; border-left:4px solid #6699CC; padding:8px 12px; margin:8px 0; font-size:0.95em;">
+<strong>Auto-generated from model output (for comparison -- delete one version when decided):</strong>
+
+Strength adaptation effect sizes (PRE->POST, by training status):
+10RM OHP -- trained *g* = `r fmt2(inline_stats$ohp_10rm_g_trained)`, untrained *g* = `r fmt2(inline_stats$ohp_10rm_g_untrained)`;
+1RM OHP -- trained *g* = `r fmt2(inline_stats$ohp_1rm_g_trained)`, untrained *g* = `r fmt2(inline_stats$ohp_1rm_g_untrained)`;
+10RM Deadlift -- trained *g* = `r fmt2(inline_stats$deadlift_10rm_g_trained)`, untrained *g* = `r fmt2(inline_stats$deadlift_10rm_g_untrained)`;
+1RM Deadlift -- trained *g* = `r fmt2(inline_stats$deadlift_1rm_g_trained)`, untrained *g* = `r fmt2(inline_stats$deadlift_1rm_g_untrained)`;
+10RM Seated Row -- trained *g* = `r fmt2(inline_stats$seated_row_10rm_g_trained)`, untrained *g* = `r fmt2(inline_stats$seated_row_10rm_g_untrained)`.
+
+Aerobic: VO~2~Max PRE->POST -- trained *g* = `r fmt2(inline_stats$vo2max_g_trained_pre_post)` (*p* = `r fmt_p_text(inline_stats$vo2max_p_trained_pre_post)`), untrained *g* = `r fmt2(inline_stats$vo2max_g_untrained_pre_post)`.
+</div>
 
 # Percent Change Analysis
 
@@ -1339,6 +1446,14 @@ The percent change analysis provides valuable insights into the magnitude and ti
 - **Technical exercise advantage**: Complex movements (overhead press, seated row) favored trained participants
 
 The percent change analysis confirms that both trained and untrained individuals can achieve substantial strength improvements through resistance training, but aerobic fitness may enhance adaptation magnitude and consistency, particularly for upper body and technically demanding exercises. The large individual variability emphasizes the importance of personalized training approaches and monitoring.
+
+<div style="background:#f5f9ff; border-left:4px solid #6699CC; padding:8px 12px; margin:8px 0; font-size:0.95em;">
+<strong>Auto-generated from model output (for comparison -- delete one version when decided):</strong>
+
+Overall percent changes (PRE->POST):
+10RM exercises ranged `r fmt1(inline_stats$pct_change_10rm_range$min)`% to `r fmt1(inline_stats$pct_change_10rm_range$max)`%;
+1RM exercises ranged `r fmt1(inline_stats$pct_change_1rm_range$min)`% to `r fmt1(inline_stats$pct_change_1rm_range$max)`%.
+</div>
 
 ```{r Percent Change1, echo=FALSE, results='asis'}
 cat(as.character(create_styled_kable(percent_change_summary_with_pvalues,
