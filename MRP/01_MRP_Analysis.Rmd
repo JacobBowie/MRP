@@ -1403,7 +1403,7 @@ rm10splot <- ggplot(mydata_10rm_summary_long, aes(x = Exercise, y = Mean, fill =
   geom_text(aes(y = Mean + SD + 2, label = ifelse(sig_diff_rm10s, "*", "")),
             position = position_dodge(width = 0.9), size = 8) +
   labs(x = "", y = "10RM (kg)", fill = "Time") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +  # Apply custom fill colors
+  scale_fill_mrp_time() +  # Apply custom fill colors
   scale_y_continuous(limits = c(0, 165),
                      breaks = seq(0, 160, 20),
                      minor_breaks = seq(0, 160, 10),
@@ -1490,7 +1490,7 @@ create_barplot_with_brackets <- function(data, rm_type, emmeans_results = NULL) 
     geom_point(data = data, aes(x = Exercise, y = Weight, fill = Time),
                position = position_jitterdodge(dodge.width = 0.9, jitter.width = 0.2),
                size = 1.5, alpha = 0.8, shape = 21, stroke = 0.2) +
-    scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+    scale_fill_mrp_time() +
     labs(x = "", y = paste0(rm_type, " (kg)"), fill = "Time") +
     # Extended scale to match both 1RM and 10RM and accommodate aligned brackets
     scale_y_continuous(limits = c(0, 170),  
@@ -1848,7 +1848,7 @@ sig_diff_rm1s <- c(F, T, T, F, T, T, F, T, T, F, T, T, F, T, T, F, T, T)
   geom_text(aes(y = Mean + SD + 2, label = ifelse(sig_diff_rm1s, "*", "")),
             position = position_dodge(width = 0.9), size = 8) +
   labs(x = "", y = "1RM (kg)", fill = "Time") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_fill_mrp_time() +
   scale_y_continuous(limits = c(0, 165),
                      breaks = seq(0, 160, 20),
                      minor_breaks = seq(0, 160, 10),
@@ -1916,7 +1916,7 @@ plot_1RM_with_asterisks <- ggplot(measures_1RM, aes(x = Exercise, y = mean_PRE_t
   geom_text(aes(y = mean_PRE_to_POST + sd_PRE_to_POST + 2, label = Asterisk), size = 8, color = "black",
             position = position_dodge(width = 0.9)) +
   labs(x = "", y = "1RM %Δ", fill = "Training Status") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color)) +  # Apply custom fill colors
+  scale_fill_mrp_training() +  # Apply custom fill colors
   scale_y_continuous(limits = c(0, 130),
                      breaks = seq(0, 120, 20),
                      minor_breaks = seq(0, 120, 10),
@@ -1965,7 +1965,7 @@ plot_10RM_with_asterisks <- ggplot(measures_10RM, aes(x = Exercise, y = mean_PRE
   geom_text(aes(y = mean_PRE_to_POST + sd_PRE_to_POST + 2, label = Asterisk), size = 8, color = "black",
             position = position_dodge(width = 0.9)) +
   labs(x = "", y = "10RM %Δ", fill = "Training Status") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color)) +  # Apply custom fill colors
+  scale_fill_mrp_training() +  # Apply custom fill colors
   theme_pubr() +
   scale_y_continuous(limits = c(0, 130),
                      breaks = seq(0, 120, 20),
@@ -2064,7 +2064,7 @@ rm1_T_plot <-
   geom_text(aes(y = Mean + SD + 2, label =ifelse(sig_diff_1rm_T, "*", "")),
             position = position_dodge(width = 0.9), size = 10) +
   labs(x = "Trained", y = "1RM (kg)", fill = "Time") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_fill_mrp_time() +
 
   scale_y_continuous(limits = c(0, 165),
                      breaks = seq(0, 160, 20),
@@ -2092,7 +2092,7 @@ ggplot(mydata_1rm_U, aes(x = Exercise, y = Mean, fill = Time)) +
   geom_text(aes(y = Mean + SD + 2, label = ifelse(sig_diff_1rm_U, "*", "")),
             position = position_dodge(width = 0.9), size = 10) +
   labs(x = "Untrained", y = "1RM (kg)", fill = "Time") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_fill_mrp_time() +
 
   scale_y_continuous(limits = c(0, 165),
                      breaks = seq(0, 160, 20),
@@ -2131,7 +2131,7 @@ rm10_T_plot <-
   geom_text(aes(y = Mean + SD + 2, label =ifelse(sig_diff_10rm_T, "*", "")),
             position = position_dodge(width = 0.9), size = 10) +
   labs(x = "Trained", y = "10RM (kg)", fill = "Time") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_fill_mrp_time() +
   scale_y_continuous(limits = c(0, 165),
                      breaks = seq(0, 160, 20),
                      minor_breaks = seq(0, 160, 10),
@@ -2157,7 +2157,7 @@ rm10_U_plot<-
   geom_text(aes(y = Mean + SD + 2, label = ifelse(sig_diff_10rm_U, "*", "")),
             position = position_dodge(width = 0.9), size = 10) +
   labs(x = "Untrained", y = "10RM (kg)", fill = "Time") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_fill_mrp_time() +
   scale_y_continuous(limits = c(0, 165),
                      breaks = seq(0, 160, 20),
                      minor_breaks = seq(0, 160, 10),
@@ -2234,7 +2234,7 @@ y_axis_label <- expression(paste("VO"[2], " (", "ml" %*% kg^-1 %*% min^-1, ")"))
 #   geom_text(aes(y = mean + sd + 1, label = ifelse(sig_diff_vo2, "*", "")),
 #             position = position_dodge(width = 0.9), size = 10) +
 #   labs(x = "", y = y_axis_label, fill = "") +
-#   scale_fill_manual(values = c(dark_blue_color, light_blue_color)) +
+#   scale_fill_mrp_training() +
 #   theme_pubr() +
 #   theme(legend.position = c(0.1, 0.9),
 #         panel.grid.major = element_blank(),
@@ -2266,7 +2266,7 @@ y_axis_label <- expression(paste("VO"[2], " (", "ml" %*% kg^-1 %*% min^-1, ")"))
 #   geom_text(aes(y = mean + sd + 1, label = ifelse(sig_diff_vo2_T, "*", "")),
 #             position = position_dodge(width = 0.9), size = 10) +
 #   labs(x = "", y = y_axis_label, fill = "") +
-#   scale_fill_manual(values = c(dark_blue_color, light_blue_color)) +
+#   scale_fill_mrp_training() +
 #   scale_y_continuous(limits = c(0, 60),
 #                      breaks = seq(0, 50, 10),
 #                      minor_breaks = seq(0, 50, 10),
@@ -2299,7 +2299,7 @@ y_axis_label <- expression(paste("VO"[2], " (", "ml" %*% kg^-1 %*% min^-1, ")"))
 #   geom_text(aes(y = mean + sd + 1, label = ifelse(sig_diff_vo2_U, "*", "")),
 #             position = position_dodge(width = 0.9), size = 10) +
 #   labs(x = "", y = y_axis_label, fill = "") +
-#   scale_fill_manual(values = c(dark_blue_color, light_blue_color)) +
+#   scale_fill_mrp_training() +
 #     scale_y_continuous(limits = c(0, 60),
 #                      breaks = seq(0, 50, 10),
 #                      minor_breaks = seq(0, 50, 10),
@@ -2386,7 +2386,7 @@ y_axis_label <- expression(paste("VO"[2], " (", "ml" %*% kg^-1 %*% min^-1, ")"))
 #             position = position_dodge(width = 0.9), size = 6) +
 #   facet_wrap(~ TrainingStatus, ncol = 3) +  # Three columns for three panels
 #   labs(x = "", y = y_axis_label, fill = "") +
-#   scale_fill_manual(values = c(dark_blue_color, light_blue_color)) +
+#   scale_fill_mrp_training() +
 #   scale_y_continuous(limits = c(0, 60),
 #                      breaks = seq(0, 50, 10),
 #                      expand = c(0, 0)) +
@@ -2511,7 +2511,7 @@ create_vo2_barplot_with_brackets <- function(data, emmeans_results = NULL) {
     geom_point(data = data, aes(x = Measure, y = Value, fill = Time),
                position = position_jitterdodge(dodge.width = 0.9, jitter.width = 0.2),
                size = 1.5, alpha = 0.8, shape = 21, stroke = 0.2) +
-    scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+    scale_fill_mrp_time() +
     facet_wrap(~ Group, ncol = 3) +
     labs(x = "", 
          y = expression(paste("VO"[2], "max (ml·kg"^-1, "·min"^-1, ") / W"[max]," (·10 W)")), 
@@ -2943,7 +2943,7 @@ RE_plot <-
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
   geom_bar(stat = "identity", position = "dodge") +
   labs(x = "", y = y_axis_label, fill = "") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_fill_mrp_time() +
   scale_y_continuous(limits = c(0, 60), breaks = seq(0, 60, 10)) +  # Manual y-axis limits and tick marks
   theme_bw() +
   theme(legend.position = c(0.1, 0.9),
@@ -2970,7 +2970,7 @@ RE_plot_T <-
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
   geom_bar(stat = "identity", position = "dodge") +
   labs(x = "", y = y_axis_label, fill = "") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_fill_mrp_time() +
   scale_y_continuous(limits = c(0, 60), breaks = seq(0, 60, 10)) +  # Manual y-axis limits and tick marks
   theme_bw() +
   theme(legend.position = c(0.1, 0.9),
@@ -2994,7 +2994,7 @@ RE_plot_U <-
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
   geom_bar(stat = "identity", position = "dodge") +
   labs(x = "", y = y_axis_label, fill = "") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_fill_mrp_time() +
   scale_y_continuous(limits = c(0, 60), breaks = seq(0, 60, 10)) +  # Manual y-axis limits and tick marks
   theme_bw() +
   theme(legend.position = c(0.1, 0.9),
@@ -3020,7 +3020,7 @@ VJ_plot <-
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
   geom_bar(stat = "identity", position = "dodge") +
   labs(x = "", y = "Inches", fill = "") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_fill_mrp_time() +
   theme_bw() +
   theme(legend.position = c(0.1, 1),
         panel.grid.major = element_blank(),
@@ -3045,7 +3045,7 @@ WM_plot <-
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
   geom_bar(stat = "identity", position = "dodge") +
   labs(x = "Maximum wattage during VO2 test", y = "Watts", fill = "") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_fill_mrp_time() +
   theme_bw() +
   theme(legend.position = element_blank(),
         panel.grid.major = element_blank(),
@@ -3071,7 +3071,7 @@ WM_plot_T <-
   geom_text(aes(y = mean + sd + 2, label = ifelse(sig_diff_WM_T, "*", "")),
             position = position_dodge(width = 0.9), size = 10) +
   labs(x = "Trained", y = "Watts", fill = "") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_fill_mrp_time() +
   theme_bw() +
   theme(legend.position = element_blank(),
         panel.grid.major = element_blank(),
@@ -3093,7 +3093,7 @@ WM_plot_U <-
   geom_bar(stat = "identity", position = "dodge") +
   geom_errorbar(aes(ymin = mean, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
   labs(x = "Untrained", y = "Watts", fill = "") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_fill_mrp_time() +
   theme_bw() +
   theme(legend.position = element_blank(),
         panel.grid.major = element_blank(),
@@ -3117,7 +3117,7 @@ BC_plot <-
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
   geom_bar(stat = "identity", position = "dodge") +
   labs(x = "All", y = "", fill = "") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_fill_mrp_time() +
   scale_y_continuous(limits = c(0, 125), breaks = seq(0, 125, 25)) +
   theme_bw() +
   theme(legend.position = c(0.1, 0.9),
@@ -3142,7 +3142,7 @@ BC_plot_T <-
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
   geom_bar(stat = "identity", position = "dodge") +
   labs(x = "Trained", y = "", fill = "") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_fill_mrp_time() +
     scale_y_continuous(limits = c(0, 125), breaks = seq(0, 125, 25)) +
   theme_bw() +
   theme(legend.position = c(0.1, 0.9),
@@ -3164,7 +3164,7 @@ BC_plot_U <-
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
   geom_bar(stat = "identity", position = "dodge") +
   labs(x = "Untrained", y = "", fill = "") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_fill_mrp_time() +
     scale_y_continuous(limits = c(0, 125), breaks = seq(0, 125, 25)) +
   theme_bw() +
   theme(legend.position = c(0.1, 0.9),
@@ -3194,7 +3194,7 @@ YY_plot <-
   geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
   geom_bar(stat = "identity", position = "dodge") +
   labs(x = "YYIR-2", y = "Meters", fill = "") +
-  scale_fill_manual(values = c(dark_blue_color, light_blue_color, third_color)) +
+  scale_fill_mrp_time() +
   theme_bw() +
   theme(legend.position = c(0.1, .95),
         panel.grid.major = element_blank(),
