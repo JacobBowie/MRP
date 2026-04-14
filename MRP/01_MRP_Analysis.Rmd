@@ -121,7 +121,9 @@ format_pvalue <- function(p) {
 
 ```
 
-## Assessing Normality and homogeneity of variance
+## Assessing Normality and Homogeneity of Variance {.tabset}
+
+### By Measure
 
 ```{r Assessing Normality and homogeneity of variance, echo=FALSE, results='asis'}
 # Pivot the data into a longer format
@@ -147,9 +149,10 @@ ggplot(mydata_long, aes(x = Value, fill = Time)) +
   ggtitle("Histogram Facetted by Measure_Exercise and Colored by Time") +
   theme_pubr()
 ```
-### Overall Normality Assessment
 
 Initial Shapiro-Wilk testing grouped by measure revealed that most variables were normally distributed, with several exceptions primarily among physiological measures. Strength measures generally met normality assumptions, while running economy measures (6.5 km·hr⁻¹, 12 km·hr⁻¹), aerobic capacity measures (VO₂Max, VO₂Peak), and functional performance measures (YYIR) showed significant departures from normality (*p* < 0.05).
+
+### By Training Status
 
 ```{r Assessing Normality and homogeneity of variance2, echo=FALSE, results='asis'}
 # Test normality for each Measure_Exercise by TrainingStatus
@@ -195,6 +198,8 @@ if (nrow(sig_non_normal) > 0) {
 
 
 
+### By Timepoint
+
 ```{r Assessing Normality and homogeneity of variance 3, echo=FALSE, warning=FALSE, results='asis'}
 # Group data by 'Measure_Exercise' and 'Time' perform the Shapiro-Wilk test for each group
 normality_tests <- mydata_long %>%
@@ -210,6 +215,8 @@ cat(as.character(
 ```
 
 
+
+### By Group x Timepoint
 
 ```{r Assessing Normality and homogeneity of variance4, echo=FALSE, warning=FALSE, results='asis'}
 normality_tests <- mydata_long %>%
@@ -229,7 +236,7 @@ cat(as.character(
 ))
 ```
 
-
+## Distributional Diagnostics and Levene's Tests
 
 ```{r Histograms, echo=FALSE}
 # Filter for sig non-normality 
@@ -325,7 +332,7 @@ Despite some departures from normality, particularly among physiological measure
 - Outliers reflected genuine performance variation rather than measurement error
 - Data quality supported mixed-effects modeling despite some assumption violations
 
-# Step 1: Mixed effects model 
+# Mixed-Effects Analysis
 
 ```{r mixed effects  ANOVA, echo=FALSE, message=FALSE, results='asis'}
 options(emmeans.msg.interaction = FALSE)
@@ -645,7 +652,7 @@ These findings demonstrate that the combined resistance and aerobic training pro
 - Larger absolute gains in lower body compared to upper body exercises
 - High measurement reliability (ICC > 0.65 for most measures) validating the mixed-effects modeling approach
 
-# Step 2: Summary statistics, p values, and effect sizes for tiempoint comparisons overall and by group
+# Summary Statistics and Effect Sizes
 
 ```{r Summary Stats, echo=FALSE, warning=FALSE, message=FALSE, results='asis'}
 # Create long-format data for statistical testing
@@ -887,7 +894,7 @@ file_name_summary_TvsU <- paste0(output_directory, "/", date, "strength_summary_
 write_xlsx(summary_p_values2, file_name_summary_TvsU)
 ```
 
-# Step 2a: Timepoint-specific comparisons of trained vs. untrained groups
+# Timepoint-Specific Trained vs Untrained
 
 ```{r Timepoint-specific comparisons, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
 # Step 3: Timepoint-specific trained vs untrained comparisons
@@ -1029,7 +1036,7 @@ The analysis comparing aerobically trained and untrained participants revealed d
 
 The results demonstrate that while both trained and untrained individuals benefit substantially from resistance training, pre-existing aerobic fitness may enhance the magnitude and rate of strength adaptations, particularly for complex upper body movements.
 
-# Step 3: Calculate percent change
+# Percent Change Analysis
 
 ```{r Percent Change, echo=FALSE, results='asis'}
 # Filter mydata_combined to only strength data for percent change analysis
@@ -1346,7 +1353,7 @@ cat(as.character(create_styled_kable(min_max_values,
   caption = "Min and Max values for percent change", digits = 3)))
 ```
 
-
+# Strength Training Visualizations
 
 ```{r Plotting 10rm, echo=FALSE, warnings=FALSE, message=FALSE}
 # Read in the Excel file and perform all transformations in a single pipeline
@@ -2182,7 +2189,7 @@ file_name_plot <- paste0(output_directory, "/", date, "10rm_TvsU_plot_sig.png")
 ggsave(file_name_plot, plot = combined_plot, width = 6, height = 4, dpi = 300)
 ```
 
-# VO2 and other variables
+# Physiological Adaptations
 
 ```{r VO2 and other variables plot, echo=FALSE, warning=FALSE}
 # read in the data from the Excel file
@@ -3208,7 +3215,7 @@ file_name_plot <- paste0(output_directory, "/", date, "_color_YY_plot.png")
 ggsave(file_name_plot, plot = YY_plot, width = 6, height = 4, dpi = 1200)
 ```
 
-# Session data
+# Training Load Progression
 
 ## Weekly resistance training load progression over 10 weeks
 
@@ -6490,7 +6497,7 @@ file_name_plot_final <- paste0(output_directory, "/", date, "_three_panel_final_
 ggsave(file_name_plot_final, final_plot, width = 6.5, height = 6, units = "in", dpi = 300)
 ```
 
-# Power analysis
+# Power Analysis
 
 ```{r Power , echo=FALSE, message=FALSE, warning=FALSE}
 # VO2max Detraining Power Analysis
