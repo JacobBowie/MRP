@@ -1515,6 +1515,7 @@ mydata_10rm_summary_long$Time <- factor(mydata_10rm_summary_long$Time, levels = 
 
 
 # create a vector indicating which bars are significantly different
+# TODO Phase 6: replace with programmatic lookup from posthoc_mixed_results
 sig_diff_rm10s <- c(F, T, T, F, T, T, F, T, T, F, T, T, F, T, T, F, F, T)
 
 # plot with markers for significant differences COLOR
@@ -1546,7 +1547,7 @@ rm10splot <- ggplot(mydata_10rm_summary_long, aes(x = Exercise, y = Mean, fill =
 
 # Save the plot to a png file at 1200 dpi
 file_name_plot <- paste0(output_directory, "/", date, "_COLOR_10rm_plot_sig.png")
-ggsave(file_name_plot, plot = rm10splot, width = 6, height = 4, dpi = 300)
+if (SAVE_PDFS) ggsave(file_name_plot, plot = rm10splot, width = 6, height = 4, dpi = 300)
 print(rm10splot)
 
 
@@ -1577,6 +1578,7 @@ format_p_value <- function(p) {
 }
 
 # Create bar plots with individual points, aligned brackets and p-values
+# TODO Phase 6+: candidate for extraction to helpers/functions.R
 create_barplot_with_brackets <- function(data, rm_type, emmeans_results = NULL) {
   
   # Prepare summary data
@@ -1743,6 +1745,7 @@ print(rm1s_plot_brackets)
 
 
 # Create bar plots with individual points, aligned brackets and p-values
+# TODO Phase 6+: candidate for extraction to helpers/functions.R
 create_barplot_with_brackets <- function(data, rm_type, emmeans_results = NULL) {
   
   # Add sex and training status information to the data
@@ -1925,16 +1928,20 @@ print("1RM Bar Plot with Brackets and Individual Points:")
 print(rm1s_plot_brackets)
 
 # Save all plots
-ggsave(paste0(output_directory, "/", date, "_bracket_points_10rm_plot.png"), 
-       rm10s_plot_brackets, width = 8, height = 5, dpi = 300)
-ggsave(paste0(output_directory, "/", date, "_bracket_points_1rm_plot.png"), 
-       rm1s_plot_brackets, width = 8, height = 5, dpi = 300)
+if (SAVE_PDFS) {
+  ggsave(paste0(output_directory, "/", date, "_bracket_points_10rm_plot.png"),
+         rm10s_plot_brackets, width = 8, height = 5, dpi = 300)
+  ggsave(paste0(output_directory, "/", date, "_bracket_points_1rm_plot.png"),
+         rm1s_plot_brackets, width = 8, height = 5, dpi = 300)
+}
 
 ggarrange(rm10s_plot_brackets, rm1s_plot_brackets, ncol = 2,
-          labels = c("a", "b"), common.legend = TRUE, legend = "bottom") 
+          labels = c("a", "b"), common.legend = TRUE, legend = "bottom")
 
-ggsave(filename = paste0(output_directory, "/", date, "_bracket_points_combined_plot.png"),
-           width = 6.5, height = 4, dpi = 300)
+if (SAVE_PDFS) {
+  ggsave(filename = paste0(output_directory, "/", date, "_bracket_points_combined_plot.png"),
+             width = 6.5, height = 4, dpi = 300)
+}
 ```
 
 
@@ -1961,6 +1968,7 @@ mydata_1rm_summary_long <- mydata_1rm_summary_long %>%
 mydata_1rm_summary_long$Time <- factor(mydata_1rm_summary_long$Time, levels = c("PRE", "MID", "POST"))
 
 # create a vector indicating which bars are significantly different
+# TODO Phase 6: replace with programmatic lookup from posthoc_mixed_results
 sig_diff_rm1s <- c(F, T, T, F, T, T, F, T, T, F, T, T, F, T, T, F, T, T)
   # plot with markers for significant differences
   rm1splot <- ggplot(mydata_1rm_summary_long, aes(x = Exercise, y = Mean, fill = Time)) +
@@ -1992,7 +2000,7 @@ sig_diff_rm1s <- c(F, T, T, F, T, T, F, T, T, F, T, T, F, T, T, F, T, T)
 
 # Save the plot to a png file at 1200 dpi
 file_name_plot <- paste0(output_directory, "/", date, "_COLOR_1rm_plot_sig.png")
-ggsave(file_name_plot, plot = rm1splot, width = 6, height = 4, dpi = 300)
+if (SAVE_PDFS) ggsave(file_name_plot, plot = rm1splot, width = 6, height = 4, dpi = 300)
 print(rm1splot)
 ```
 
@@ -2107,8 +2115,6 @@ plot_10RM_with_asterisks <- ggplot(measures_10RM, aes(x = Exercise, y = mean_PRE
 plot_10RM_with_asterisks
 ```
 
-![10RM Plot](02212024_output/02212024_SIG_10RM_plot_TvsU.png)
-![1RM Plot ](02212024_output/02212024_SIG_1RM_plot_TvsU.png)
 ```{r combined-strength-plots, include=FALSE}
 # Combine all 4 plots using ggarrange
 combined_strength_plots <- ggarrange(
@@ -2120,7 +2126,7 @@ combined_strength_plots <- ggarrange(
 )
 # Save the combined plot
 file_name_plot <- paste0(output_directory, "/", date, "_combined_strength_plots.png")
-ggsave(file_name_plot, plot = combined_strength_plots, width = 6.5, height = 5, dpi = 300)
+if (SAVE_PDFS) ggsave(file_name_plot, plot = combined_strength_plots, width = 6.5, height = 5, dpi = 300)
 
 combined_strength_plots
 ```
@@ -2175,6 +2181,7 @@ mydata_10rm_T <- mydata %>% filter(Measure == "10RM" & TrainingStatus == "traine
 mydata_10rm_U <- mydata %>% filter(Measure == "10RM" & TrainingStatus == "untrained") %>% summarize_and_reshape()
 
 # create a vector indicating which bars are significantly different
+# TODO Phase 6: replace with programmatic lookup from posthoc_mixed_results
 sig_diff_1rm_T <- c(F,F,T,F,T,T,F,T,T,F,T,T,F,F,F,F,T,T)
 #(BP, DL, LAT, LP ,OHP,SR)
 # plot with markers for significant differences
@@ -2202,8 +2209,9 @@ rm1_T_plot <-
 
 # Save the plot to a png file at 1200 dpi
 file_name_plot <- paste0(output_directory, "/", date, "1rm_T_plot_sig.png")
-ggsave(file_name_plot, plot = rm1_T_plot, width = 6, height = 4, dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, plot = rm1_T_plot, width = 6, height = 4, dpi = 1200)
 
+# TODO Phase 6: replace with programmatic lookup from posthoc_mixed_results
 sig_diff_1rm_U <- c(F,T,T,F,T,T,F,T,T,F,F,T,F,F,T,F,F,F)
 #(BP, DL, LAT, LP ,OHP,SR)
 rm1_U_plot<-
@@ -2229,19 +2237,20 @@ ggplot(mydata_1rm_U, aes(x = Exercise, y = Mean, fill = Time)) +
         panel.border = element_blank())
 
 file_name_plot <- paste0(output_directory, "/", date, "1rm_U_plot_sig.png")
-ggsave(file_name_plot, plot = rm1_U_plot, width = 6, height = 4, dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, plot = rm1_U_plot, width = 6, height = 4, dpi = 1200)
 
 # Combine the plots using plot_grid and include labels
 combined_plot <- plot_grid(rm1_U_plot, rm1_T_plot, nrow = 1)
 print(combined_plot)
 
 file_name_plot <- paste0(output_directory, "/", date, "1rm_TvsU_plot_sig.png")
-ggsave(file_name_plot, plot = combined_plot, width = 6, height = 4, dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, plot = combined_plot, width = 6, height = 4, dpi = 1200)
 
 # Reorder factor levels for Exercise variable
 exercise_order <- c("Leg Press", "Deadlift", "Seated Row", "Lat Pull", "Bench Press",  "OHP")
 mydata_10rm_T$Exercise <- factor(mydata_10rm_T$Exercise, levels = exercise_order)
 # create a vector indicating which bars are significantly different
+# TODO Phase 6: replace with programmatic lookup from posthoc_mixed_results
 sig_diff_10rm_T <- c(F,F,F,F,T,T,F,F,T,F,T,T,F,F,T,F,T,T)
 #(BP, DL, LAT, LP ,OHP,SR)
 # plot with markers for significant differences
@@ -2267,8 +2276,9 @@ rm10_T_plot <-
         panel.border = element_blank())
 # Save the plot to a png file at 1200 dpi
 file_name_plot <- paste0(output_directory, "/", date, "10rm_T_plot_sig.png")
-ggsave(file_name_plot, plot = rm10_T_plot, width = 6, height = 4, dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, plot = rm10_T_plot, width = 6, height = 4, dpi = 1200)
 
+# TODO Phase 6: replace with programmatic lookup from posthoc_mixed_results
 sig_diff_10rm_U <- c(F,T,T,F,T,T,F,T,T,F,T,T,F,F,T,F,T,T)
 #(BP, DL, LAT, LP ,OHP,SR)
 rm10_U_plot<-
@@ -2293,7 +2303,7 @@ rm10_U_plot<-
         panel.border = element_blank())
 
 file_name_plot <- paste0(output_directory, "/", date, "10rm_U_plot_sig.png")
-ggsave(file_name_plot, plot = rm10_U_plot, width = 6, height = 4, dpi = 300)
+if (SAVE_PDFS) ggsave(file_name_plot, plot = rm10_U_plot, width = 6, height = 4, dpi = 300)
 
 # Combine the plots using plot_grid and include labels
 combined_plot <- plot_grid(rm10_U_plot, rm10_T_plot, nrow = 1)
@@ -2301,7 +2311,7 @@ combined_plot <- plot_grid(rm10_U_plot, rm10_T_plot, nrow = 1)
 # Display the combined plot
 print(combined_plot)
 file_name_plot <- paste0(output_directory, "/", date, "10rm_TvsU_plot_sig.png")
-ggsave(file_name_plot, plot = combined_plot, width = 6, height = 4, dpi = 300)
+if (SAVE_PDFS) ggsave(file_name_plot, plot = combined_plot, width = 6, height = 4, dpi = 300)
 ```
 
 # Physiological Adaptations
@@ -3043,8 +3053,10 @@ print("VO2Max and Wmax Plot - Same Style as Strength Plots:")
 print(vo2_wmax_plot)
 
 # Save the plot
-ggsave(paste0(output_directory, "/", date, "_vo2max_wmax_strength_style_plot.png"), 
-       vo2_wmax_plot, width = 6.5, height = 4, dpi = 300)
+if (SAVE_PDFS) {
+  ggsave(paste0(output_directory, "/", date, "_vo2max_wmax_strength_style_plot.png"),
+         vo2_wmax_plot, width = 6.5, height = 4, dpi = 300)
+}
 ```
 
 # Other variables
@@ -3076,7 +3088,7 @@ RE_plot <-
 
 # Save the plot to a png file at 1200 dpi
 file_name_plot <- paste0(output_directory, "/", date, "_color_RE_plot.png")
-ggsave(file_name_plot, plot = RE_plot, width = 6, height = 4, dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, plot = RE_plot, width = 6, height = 4, dpi = 1200)
 
 RE_data_T <- subset(long_data_T, Measure %in% c("6.5km*hr-1", "16km*hr-1", "12km*hr-1"))
 # Change the levels of the Timepoint factor to set the desired order
@@ -3151,7 +3163,7 @@ VJ_plot <-
         panel.border = element_blank())
 # Save the plot to a png file at 1200 dpi
 file_name_plot <- paste0(output_directory, "/", date, "_color_VJ_plot.png")
-ggsave(file_name_plot, plot = VJ_plot, width = 6, height = 4, dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, plot = VJ_plot, width = 6, height = 4, dpi = 1200)
 
 # Subset the data to only include running economy
 WM_data <- subset(long_data, Measure %in% c("Wmax"))
@@ -3184,6 +3196,7 @@ WM_summary_T <- WM_data_T %>%
   group_by(Measure, Timepoint) %>%
   summarise(mean = mean(Value), sd = sd(Value), .groups = 'drop')
 # create a vector indicating which bars are significantly different
+# TODO Phase 6: replace with programmatic lookup from posthoc_mixed_results
 sig_diff_WM_T <- c(F, F, T)
 # Create the plot sig diff
 WM_plot_T <-
@@ -3249,7 +3262,7 @@ BC_plot <-
         panel.border = element_blank())
 # Save the plot to a png file at 1200 dpi
 file_name_plot <- paste0(output_directory, "/", date, "_color_COMBO_BC_VJ_plot.png")
-ggsave(file_name_plot, plot = BC_plot, width = 6, height = 4, dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, plot = BC_plot, width = 6, height = 4, dpi = 1200)
 
 BC_data_T <- subset(long_data_T, Measure %in% c("Body fat (%)", "Weight (Kg)", "Vertical Jump"))
 # Change the levels of the Timepoint factor to set the desired order
@@ -3327,7 +3340,7 @@ YY_plot <-
 print(YY_plot)
 # Save the plot to a png file at 1200 dpi
 file_name_plot <- paste0(output_directory, "/", date, "_color_YY_plot.png")
-ggsave(file_name_plot, plot = YY_plot, width = 6, height = 4, dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, plot = YY_plot, width = 6, height = 4, dpi = 1200)
 ```
 
 # Training Load Progression
@@ -3460,7 +3473,7 @@ for (exercise in unique_exercises) {
 arranged_plots <- ggarrange(plotlist = exercise_plots, ncol = 3, nrow = 2)
 print(arranged_plots)
 file_name_plot <-  paste0(output_directory, "/", date, "load_by_week_arranged_plots.png")
-ggsave(file_name_plot, plot = arranged_plots, width = 6, height = 4, dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, plot = arranged_plots, width = 6, height = 4, dpi = 1200)
 ```
 
 ## Weekly volume load progression over 10 weeks
@@ -3644,7 +3657,7 @@ for (exercise in unique_exercises) {
 arranged_plots <- ggarrange(plotlist = exercise_plots, ncol = 3, nrow = 2)
 print(arranged_plots)
 file_name_plot <-  paste0(output_directory, "/", date, "volume_load_by_week_arranged_plots.png")
-ggsave(file_name_plot, plot = arranged_plots, width = 6, height = 4, dpi = 300)
+if (SAVE_PDFS) ggsave(file_name_plot, plot = arranged_plots, width = 6, height = 4, dpi = 300)
 ```
 
 ## Volume load progression as a percentage of PRE 1RM
@@ -4042,7 +4055,7 @@ for (exercise in unique_exercises) {
 arranged_plots <- ggarrange(plotlist = exercise_plots, ncol = 3, nrow = 2)
 print(arranged_plots)
 file_name_plot <- paste0(output_directory, "/", date, "relative_volume_load_by_week_arranged_plots.png")
-ggsave(file_name_plot, plot = arranged_plots, width = 6, height = 4, dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, plot = arranged_plots, width = 6, height = 4, dpi = 1200)
 rel_volume_load <- arranged_plots
 
 
@@ -4154,7 +4167,7 @@ print(arranged_plots_with_legend)
 
 # Save the plot
 file_name_plot <- paste0(output_directory, "/", date, "_relative_volume_load_with_demographics.png")
-ggsave(file_name_plot, arranged_plots_with_legend, width = 12, height = 8, dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, arranged_plots_with_legend, width = 12, height = 8, dpi = 1200)
 
 # Store for later use
 rel_volume_load <- arranged_plots_with_legend
@@ -4336,7 +4349,7 @@ print(arranged_boxplots)
 
 # Save the boxplot version
 file_name_boxplot <- paste0(output_directory, "/", date, "_relative_volume_load_boxplots.png")
-ggsave(file_name_boxplot, arranged_boxplots, width = 12, height = 8, dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_boxplot, arranged_boxplots, width = 12, height = 8, dpi = 1200)
 
 
 
@@ -4553,7 +4566,7 @@ for (exercise in unique_exercises) {
 arranged_plots <- ggarrange(plotlist = exercise_plots, ncol = 3, nrow = 2)
 print(arranged_plots)
 file_name_plot <-  paste0(output_directory, "/", date, "POST_relative_volume_load_by_week_arranged_plots.png")
-ggsave(file_name_plot, plot = arranged_plots, width = 6, height = 4, dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, plot = arranged_plots, width = 6, height = 4, dpi = 1200)
 
 #Combine percentage_summary_PRE and Percentage_summary_POST side by side
 percentage_summary <- left_join(percentage_summary_PRE, percentage_summary_POST, by = c("Exercise", "Week")) %>%
@@ -4861,7 +4874,7 @@ load_plot1 <- ggplot(load_summary, aes(x = week, y = mean_load)) +
    )
 print(load_plot1)
 file_name_plot <- paste0(output_directory, "/", date, "HIIT_session_load.png")
-ggsave(file_name_plot, load_plot1, width = 11, height = 8.5, units = "in", dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, load_plot1, width = 11, height = 8.5, units = "in", dpi = 1200)
 
 # Calculate the mean and standard deviation per week for the filtered data
 load_summary <- load_rows %>%
@@ -4961,7 +4974,7 @@ load_hr_plot <- ggplot(merged_data, aes(x = Percentage_Wmax, y = Percentage_APMH
 # Print the plot
 print(load_hr_plot)
 file_name_plot <- paste0(output_directory, "/", date, "_MAX_HIIT_session_HR_Load_Scatter.png")
-ggsave(file_name_plot, load_hr_plot, width = 9, height = 6, units = "in", dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, load_hr_plot, width = 9, height = 6, units = "in", dpi = 1200)
 
 # Simple and robust approach
 available_weeks <- unique(load_table$week)
@@ -5317,7 +5330,7 @@ cat("p =", sprintf("%.3f", wmax_interaction_p), wmax_interaction_sig,
 
 # Save the plot
 file_name_wmax_plot <- paste0(output_directory, "/", date, "_wmax_boxplot_with_demographics.png")
-ggsave(file_name_wmax_plot, wmax_boxplot, width = 6.5, height = 4, units = "in", dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_wmax_plot, wmax_boxplot, width = 6.5, height = 4, units = "in", dpi = 1200)
 
 # Store for later arrangement with other plots
 wmax_load_plot <- wmax_boxplot
@@ -5423,7 +5436,7 @@ caption = paste("Group × Time Interaction: p =", sprintf("%.3f", interaction_p)
 print(max_ratio_plot)
 
 file_name_plot <- paste0(output_directory, "/", date, "_TvsU_max_ratio_plot.png")
-ggsave(file_name_plot, max_ratio_plot, width = 6.5, height = 4, units = "in", dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, max_ratio_plot, width = 6.5, height = 4, units = "in", dpi = 1200)
 
 
 
@@ -5618,7 +5631,7 @@ cat("p =", sprintf("%.3f", interaction_p), interaction_sig,
 
 # Save the updated plot
 file_name_plot <- paste0(output_directory, "/", date, "_ratio_boxplot_with_demographics.png")
-ggsave(file_name_plot, ratio_boxplot, width = 6.5, height = 4, units = "in", dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, ratio_boxplot, width = 6.5, height = 4, units = "in", dpi = 1200)
 
 # Store for later arrangement with other plots
 hr_load_ratio_plot <- ratio_boxplot
@@ -5664,7 +5677,7 @@ load_hr_plot <- ggplot(merged_data, aes(x = Percentage_Wmax, y = Percentage_APMH
 # Print the plot
 print(load_hr_plot)
 file_name_plot <- paste0(output_directory, "/", date, "_mean_HIIT_session_HR_Load_Scatter.png")
-ggsave(file_name_plot, load_hr_plot, width = 9, height = 6, units = "in", dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, load_hr_plot, width = 9, height = 6, units = "in", dpi = 1200)
 
 # Calculate the ratio of HR to Load
 ratio_summary <- merged_data %>%
@@ -5706,7 +5719,7 @@ mean_ratio_plot <- ggplot(ratio_summary, aes(x = week, y = mean_ratio)) +
   geom_text(aes(x = Inf, y = Inf, label = paste("r² =", round(R_squared, 3))), vjust = 2, hjust = 1.1, data = . %>% group_by(TrainingStatus) %>% summarise(R_squared = mean(R_squared))) # Add R-squared value for each facet
 print(mean_ratio_plot)
 file_name_plot <- paste0(output_directory, "/", date, "_TvsU_mean_ratio_plot.png")
-ggsave(file_name_plot, mean_ratio_plot, width = 11, height = 8.5, units = "in", dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, mean_ratio_plot, width = 11, height = 8.5, units = "in", dpi = 1200)
 ```
 
 # HIFT
@@ -5887,7 +5900,7 @@ print(refined_boxplot)
 
 # Save plot
 file_name_plot <- paste0(output_directory, "/", date, "_HIFT_weekly_performance.png")
-ggsave(file_name_plot, refined_boxplot, width = 6.5, height = 4, dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot, refined_boxplot, width = 6.5, height = 4, dpi = 1200)
 
 # Training status comparison
 reps_week_training_plot <- ggscatter(mydata_filtered, x = "Week_num", y = "Value",
@@ -5909,7 +5922,7 @@ print(reps_week_training_plot)
 
 # Save training status plot
 file_name_plot2 <- paste0(output_directory, "/", date, "_HIFT_by_training_status.png")
-ggsave(file_name_plot2, reps_week_training_plot, width = 8, height = 5, dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot2, reps_week_training_plot, width = 8, height = 5, dpi = 1200)
 
 # Model slope analysis
 lm_fit <- lm(Value ~ Week_num, data = mydata_filtered)
@@ -6134,7 +6147,7 @@ cat(as.character(create_styled_kable(session_completion,
 
 # Save the plot
 file_name_hift <- paste0(output_directory, "/", date, "_HIFT_performance_with_demographics.png")
-ggsave(file_name_hift, hift_boxplot, width = 8, height = 6, dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_hift, hift_boxplot, width = 8, height = 6, dpi = 1200)
 ```
 
 
@@ -6284,7 +6297,7 @@ rel_volume_load <- ggarrange(
 print(rel_volume_load)
 # Save the updated plot
 file_name_boxplot <- paste0(output_directory, "/", date, "_relative_volume_load_with_demographics_fixed.png")
-ggsave(file_name_boxplot, rel_volume_load, width = 12, height = 8, dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_boxplot, rel_volume_load, width = 12, height = 8, dpi = 1200)
 
 
 #############################
@@ -6540,7 +6553,7 @@ print(option1_plot)
 
 # Save Option 1
 file_name_plot1 <- paste0(output_directory, "/", date, "_three_panel_option1.png")
-ggsave(file_name_plot1, option1_plot, width = 6.5, height = 6, units = "in", dpi = 300)
+if (SAVE_PDFS) ggsave(file_name_plot1, option1_plot, width = 6.5, height = 6, units = "in", dpi = 300)
 
 # Option 2: Single row with three panels
 option2_plot <- ggarrange(
@@ -6559,7 +6572,7 @@ print(option2_plot)
 
 # Save Option 2
 file_name_plot2 <- paste0(output_directory, "/", date, "_three_panel_option2.png")
-ggsave(file_name_plot2, option2_plot, width = 15, height = 5, units = "in", dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot2, option2_plot, width = 15, height = 5, units = "in", dpi = 1200)
 
 # Alternative Option 1 with different height ratios (if you want the top panel larger)
 option1_alt <- ggarrange(
@@ -6583,7 +6596,7 @@ print(option1_alt)
 
 # Save Option 1 Alternative
 file_name_plot1_alt <- paste0(output_directory, "/", date, "_three_panel_option1_alt.png")
-ggsave(file_name_plot1_alt, option1_alt, width = 12, height = 9, units = "in", dpi = 1200)
+if (SAVE_PDFS) ggsave(file_name_plot1_alt, option1_alt, width = 12, height = 9, units = "in", dpi = 1200)
 
 # Step 1: Create the bottom panel with common legend from the two plots that have the right aesthetics
 bottom_panel_with_legend <- ggarrange(
@@ -6609,7 +6622,7 @@ print(final_plot)
 
 # Save it
 file_name_plot_final <- paste0(output_directory, "/", date, "_three_panel_final_with_legend.png")
-ggsave(file_name_plot_final, final_plot, width = 6.5, height = 6, units = "in", dpi = 300)
+if (SAVE_PDFS) ggsave(file_name_plot_final, final_plot, width = 6.5, height = 6, units = "in", dpi = 300)
 ```
 
 # Power Analysis
