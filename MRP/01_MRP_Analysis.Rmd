@@ -123,7 +123,7 @@ format_pvalue <- function(p) {
 
 ## Assessing Normality and homogeneity of variance
 
-```{r Assessing Normality and homogeneity of variance, echo=FALSE}
+```{r Assessing Normality and homogeneity of variance, echo=FALSE, results='asis'}
 # Pivot the data into a longer format
 mydata_long <- pivot_longer(mydata_combined, cols = c(PRE, MID, POST),
                             names_to = "Time", values_to = "Value")
@@ -133,7 +133,11 @@ normality_tests <- mydata_long %>%
   group_by(Measure_Exercise) %>%
   summarize(p_value = shapiro.test(Value)$p.value, .groups = 'drop')
 # Print the results
-kable(normality_tests, digits = 3, caption = "Shapiro-Wilk test for normality group_by(Measure_Exercise) reveals measures are normally distributed ")
+cat(as.character(
+  create_styled_kable(normality_tests,
+    caption = "Shapiro-Wilk test for normality by Measure_Exercise",
+    digits = 3)
+))
 
 # Create a histogram facetted by "Measure_Exercise" and colored by Time
 ggplot(mydata_long, aes(x = Value, fill = Time)) +
@@ -147,7 +151,7 @@ ggplot(mydata_long, aes(x = Value, fill = Time)) +
 
 Initial Shapiro-Wilk testing grouped by measure revealed that most variables were normally distributed, with several exceptions primarily among physiological measures. Strength measures generally met normality assumptions, while running economy measures (6.5 km·hr⁻¹, 12 km·hr⁻¹), aerobic capacity measures (VO₂Max, VO₂Peak), and functional performance measures (YYIR) showed significant departures from normality (*p* < 0.05).
 
-```{r Assessing Normality and homogeneity of variance2, echo=FALSE}
+```{r Assessing Normality and homogeneity of variance2, echo=FALSE, results='asis'}
 # Test normality for each Measure_Exercise by TrainingStatus
 normality_tests <- mydata_long %>%
   group_by(Measure_Exercise, TrainingStatus) %>%
@@ -158,8 +162,11 @@ sig_non_normal <- normality_tests %>%
   filter(p_value < 0.05)
 
 # Print the results
-sig_non_normal %>%
-  kable(digits = 3, caption = "Shapiro-Wilk test for normality group_by(Measure_Exercise, TrainingStatus) - Significant non-normal distributions")
+cat(as.character(
+  create_styled_kable(sig_non_normal,
+    caption = "Shapiro-Wilk: non-normal distributions by Measure x TrainingStatus",
+    digits = 3)
+))
 
 # Create histogram only if there are significant non-normal measures
 if (nrow(sig_non_normal) > 0) {
@@ -188,19 +195,23 @@ if (nrow(sig_non_normal) > 0) {
 
 
 
-```{r Assessing Normality and homogeneity of variance 3, echo=FALSE, warning=FALSE}
+```{r Assessing Normality and homogeneity of variance 3, echo=FALSE, warning=FALSE, results='asis'}
 # Group data by 'Measure_Exercise' and 'Time' perform the Shapiro-Wilk test for each group
 normality_tests <- mydata_long %>%
   group_by(Measure_Exercise, Time) %>%
   summarize(p_value = shapiro.test(Value)$p.value, .groups = 'drop')
 # Filter for sig non-normality 
 filtered_normality_tests <- filter(normality_tests, p_value < 0.05)
-kable(filtered_normality_tests, digits = 3, caption = "Shapiro-Wilk test for non-normality group_by(Measure_Exercise, Time) reveals OHP and Seated Row are not normally distributed at specific timepoints")
+cat(as.character(
+  create_styled_kable(filtered_normality_tests,
+    caption = "Shapiro-Wilk: non-normal by Measure x Timepoint (OHP, Seated Row)",
+    digits = 3)
+))
 ```
 
 
 
-```{r Assessing Normality and homogeneity of variance4, echo=FALSE, warning=FALSE}
+```{r Assessing Normality and homogeneity of variance4, echo=FALSE, warning=FALSE, results='asis'}
 normality_tests <- mydata_long %>%
   group_by(Measure_Exercise, Time, TrainingStatus) %>%
   filter(n() >= 3) %>%  # Ensure each group has at least 3 observations
@@ -211,7 +222,11 @@ normality_tests <- mydata_long %>%
 
 # Filter for sig non-normality 
 filtered_normality_tests <- filter(normality_tests, p_value < 0.05)
-kable(filtered_normality_tests, digits = 3, caption = "Shapiro-Wilk test for non-normality group_by(Measure_Exercise, Time, TrainingStatus)")
+cat(as.character(
+  create_styled_kable(filtered_normality_tests,
+    caption = "Shapiro-Wilk: non-normal by Measure x Timepoint x TrainingStatus",
+    digits = 3)
+))
 ```
 
 
@@ -254,18 +269,18 @@ leveneTest(Value ~ Time * Measure_Exercise * TrainingStatus, data = mydata_long)
 
 ### Perform Levene's Test for each Measure
 
-```{r Levenes Test, echo=TRUE, warning=FALSE}
+```{r Levenes Test, echo=TRUE, warning=FALSE, results='asis'}
 levene_results <- mydata_long %>%
   group_by(Measure_Exercise ) %>%
   do(tidy(leveneTest(Value ~ Time, data = .)))
 filtered_levene_results <- filter(levene_results, p.value < 0.05)
-kable(filtered_levene_results, digits = 3)
+cat(as.character(create_styled_kable(filtered_levene_results, digits = 3)))
 #no significant differences in variance
 levene_results <- mydata_long %>%
   group_by(Measure_Exercise, TrainingStatus ) %>%
   do(tidy(leveneTest(Value ~ Time, data = .)))
 filtered_levene_results <- filter(levene_results, p.value < 0.05)
-kable(filtered_levene_results, digits = 3)
+cat(as.character(create_styled_kable(filtered_levene_results, digits = 3)))
 ```
 
 ### Overall Normality Assessment
@@ -312,7 +327,7 @@ Despite some departures from normality, particularly among physiological measure
 
 # Step 1: Mixed effects model 
 
-```{r mixed effects  ANOVA, echo=FALSE,message=FALSE }
+```{r mixed effects  ANOVA, echo=FALSE, message=FALSE, results='asis'}
 options(emmeans.msg.interaction = FALSE)
 
 # Reshape to long format for analysis
@@ -459,14 +474,21 @@ mixed_results_table <- mixed_results$anova_results %>%
   ) %>%
   arrange(Measure, term)
 
-# Display results with better formatting
-mixed_results_table %>%
-  select(Measure, term, statistic, df, df.residual, p.value, significance) %>%
-  kbl(digits = 4, 
-      caption = "Mixed-Effects ANOVA Results (Weight ~ Timepoint * TrainingStatus + (1|Subject))",
-      col.names = c("Measure", "Term", "F-statistic", "NumDF", "DenDF", "p-value", "Sig.")) %>%
-  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
+# Display results with cell_spec formatted p-values
+mixed_display <- mixed_results_table %>%
+  select(Measure, term, statistic, df, df.residual, p.value) %>%
+  mutate(
+    statistic = fmt2(statistic),
+    p.value = fmt_p(p.value)
+  )
+
+cat(as.character(
+  create_styled_kable(mixed_display,
+    caption = "Mixed-Effects ANOVA Results (Weight ~ Timepoint * TrainingStatus + (1|Subject))",
+    escape = FALSE,
+    col.names = c("Measure", "Term", "F-statistic", "NumDF", "DenDF", "p-value")) %>%
   pack_rows(index = table(mixed_results_table$Measure))
+))
 
 # Function to extract and display significant post-hoc results
 display_significant_posthoc <- function(posthoc_list, alpha = 0.05) {
@@ -488,12 +510,20 @@ display_significant_posthoc <- function(posthoc_list, alpha = 0.05) {
 if (length(posthoc_mixed_results) > 0) {
   significant_posthoc <- display_significant_posthoc(posthoc_mixed_results)
 }
-significant_posthoc %>%
-      select(Measure, comparison, estimate, std.error, adj.p.value, significance) %>%
-      kable(digits = 3, 
-            caption = "Significant Timepoint Pairwise Comparisons",
-            col.names = c("Exercise", "Comparison", "Estimate (kg)", "SE", "p-value", "Sig.")) %>%
-      kable_styling(bootstrap_options = c("striped", "hover"))
+posthoc_display <- significant_posthoc %>%
+  select(Measure, comparison, estimate, std.error, adj.p.value) %>%
+  mutate(
+    estimate = fmt2(estimate),
+    std.error = fmt2(std.error),
+    adj.p.value = fmt_p(adj.p.value)
+  )
+
+cat(as.character(
+  create_styled_kable(posthoc_display,
+    caption = "Significant Timepoint Pairwise Comparisons",
+    escape = FALSE,
+    col.names = c("Exercise", "Comparison", "Estimate (kg)", "SE", "p-value"))
+))
 
 # Model diagnostics function
 check_model_assumptions <- function(model, measure_name) {
@@ -563,10 +593,11 @@ icc_results <- map_df(mixed_results$models, function(model) {
   }
 }, .id = "Measure")
 
-print("Intraclass Correlation Coefficients (justifies random effects):")
-kbl(icc_results, digits = 3, 
-    caption = "ICC values (>0.1 suggests substantial within-subject correlation)") %>%
-  kable_styling()
+cat(as.character(
+  create_styled_kable(icc_results,
+    caption = "ICC values (> 0.1 suggests substantial within-subject correlation)",
+    digits = 3)
+))
 
 # Save comprehensive mixed-effects results
 write_xlsx(list(
@@ -616,7 +647,7 @@ These findings demonstrate that the combined resistance and aerobic training pro
 
 # Step 2: Summary statistics, p values, and effect sizes for tiempoint comparisons overall and by group
 
-```{r Summary Stats, echo=FALSE, warning=FALSE, message=FALSE}
+```{r Summary Stats, echo=FALSE, warning=FALSE, message=FALSE, results='asis'}
 # Create long-format data for statistical testing
 mydata_long <- mydata_combined %>%
   pivot_longer(cols = c("PRE", "MID", "POST"), names_to = "Timepoint", values_to = "Weight") %>%
@@ -770,32 +801,36 @@ summary_p_values2 <- left_join(mydata_summary_TvsU, emmeans_pvals_by_training,
          p_val_mid_post, hedges_g_mid_post,
          p_val_pre_post, hedges_g_pre_post)
 
-# Create tables with formatted p-values and clean column names
+# Format p-values and effect sizes with cell_spec for conditional styling
 summary_p_values1_table <- summary_p_values1 %>%
   mutate(
-    p_val_pre_mid = map_chr(p_val_pre_mid, format_pvalue),
-    p_val_pre_post = map_chr(p_val_pre_post, format_pvalue),
-    p_val_mid_post = map_chr(p_val_mid_post, format_pvalue)
+    p_val_pre_mid  = fmt_p(p_val_pre_mid),
+    p_val_pre_post = fmt_p(p_val_pre_post),
+    p_val_mid_post = fmt_p(p_val_mid_post),
+    hedges_g_pre_mid  = fmt_g(hedges_g_pre_mid),
+    hedges_g_pre_post = fmt_g(hedges_g_pre_post),
+    hedges_g_mid_post = fmt_g(hedges_g_mid_post)
   )
 
 summary_p_values2_table <- summary_p_values2 %>%
   mutate(
-    p_val_pre_mid = map_chr(p_val_pre_mid, format_pvalue),
-    p_val_pre_post = map_chr(p_val_pre_post, format_pvalue),
-    p_val_mid_post = map_chr(p_val_mid_post, format_pvalue)
+    p_val_pre_mid  = fmt_p(p_val_pre_mid),
+    p_val_pre_post = fmt_p(p_val_pre_post),
+    p_val_mid_post = fmt_p(p_val_mid_post),
+    hedges_g_pre_mid  = fmt_g(hedges_g_pre_mid),
+    hedges_g_pre_post = fmt_g(hedges_g_pre_post),
+    hedges_g_mid_post = fmt_g(hedges_g_mid_post)
   )
 
-# Display tables with clean column names
-summary_p_values1_table %>%
-  kbl(caption = "Summary of strength measures with emmeans p-values", digits = 3,
-      col.names = c("Exercise", "PRE", "MID", "POST", 
-                   "p PRE-MID", "g PRE-MID", "p MID-POST", "g MID-POST", 
-                   "p PRE-POST", "g PRE-POST")) %>%
-  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
-  column_spec(1, bold = TRUE) %>%
-  column_spec(5, bold = ifelse(grepl("\\*", summary_p_values1_table$p_val_pre_mid), TRUE, FALSE)) %>%
-  column_spec(7, bold = ifelse(grepl("\\*", summary_p_values1_table$p_val_mid_post), TRUE, FALSE)) %>%
-  column_spec(9, bold = ifelse(grepl("\\*", summary_p_values1_table$p_val_pre_post), TRUE, FALSE))
+# Display tables with cell_spec conditional formatting (blue p-values, red effect sizes)
+cat(as.character(
+  create_styled_kable(summary_p_values1_table,
+    caption = "Summary of strength measures with emmeans p-values",
+    escape = FALSE,
+    col.names = c("Exercise", "PRE", "MID", "POST",
+                  "p PRE-MID", "g PRE-MID", "p MID-POST", "g MID-POST",
+                  "p PRE-POST", "g PRE-POST"))
+))
 ```
 
 ## Summary of Training Adaptations
@@ -832,18 +867,17 @@ The comprehensive analysis of 22 performance measures revealed substantial and p
 
 The results demonstrate that concurrent resistance and aerobic training effectively improved strength performance while maintaining aerobic capacity, with strength adaptations being more pronounced and occurring across a broader range of measures than physiological adaptations.
 
-```{r display summary table, echo=FALSE, message=FALSE, warning=FALSE}
-summary_p_values2_table %>%
-  kbl(caption = "Trained Vs. Untrained Summary of strength measures with emmeans p-values", digits = 3,
-      col.names = c("Exercise", "Training", "PRE", "MID", "POST", 
-                   "p PRE-MID", "g PRE-MID", "p MID-POST", "g MID-POST", 
-                   "p PRE-POST", "g PRE-POST")) %>%
-  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE) %>%
-  column_spec(1, bold = TRUE) %>%
-  column_spec(2, background = ifelse(summary_p_values2_table$TrainingStatus == "trained", "#e6f7ff", "#fff2e6")) %>%
-  column_spec(6, bold = ifelse(grepl("\\*", summary_p_values2_table$p_val_pre_mid), TRUE, FALSE)) %>%
-  column_spec(8, bold = ifelse(grepl("\\*", summary_p_values2_table$p_val_mid_post), TRUE, FALSE)) %>%
-  column_spec(10, bold = ifelse(grepl("\\*", summary_p_values2_table$p_val_pre_post), TRUE, FALSE))
+```{r display summary table, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+cat(as.character(
+  create_styled_kable(summary_p_values2_table,
+    caption = "Trained vs. Untrained Summary with emmeans p-values",
+    escape = FALSE,
+    col.names = c("Exercise", "Training", "PRE", "MID", "POST",
+                  "p PRE-MID", "g PRE-MID", "p MID-POST", "g MID-POST",
+                  "p PRE-POST", "g PRE-POST")) %>%
+  column_spec(2, background = ifelse(summary_p_values2_table$TrainingStatus == "trained",
+                                     "#e6f7ff", "#fff2e6"))
+))
 
 # Save Excel files
 file_name_summary <- paste0(output_directory, "/", date, "strength_summary_pval.xlsx")
@@ -855,7 +889,7 @@ write_xlsx(summary_p_values2, file_name_summary_TvsU)
 
 # Step 2a: Timepoint-specific comparisons of trained vs. untrained groups
 
-```{r Timepoint-specific comparisons, echo=FALSE, message=FALSE, warning=FALSE}
+```{r Timepoint-specific comparisons, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
 # Step 3: Timepoint-specific trained vs untrained comparisons
 # Alternative: Run the missing emmeans comparisons directly from your models
 run_timepoint_training_comparisons <- function(mixed_models) {
@@ -932,16 +966,20 @@ TvsU <- comparison_results %>%
   ))
 
 if(nrow(TvsU) > 0) {
-  TvsU %>%
+  tvsu_display <- TvsU %>%
     select(Measure, Timepoint, trained_mean_se, untrained_mean_se,
-           contrast_estimate, p_value, significance) %>%
-    kbl(
-      digits = 3,
+           contrast_estimate, p_value) %>%
+    mutate(
+      contrast_estimate = fmt2(contrast_estimate),
+      p_value = fmt_p(p_value)
+    )
+  cat(as.character(
+    create_styled_kable(tvsu_display,
       caption = "Trained vs Untrained differences at each timepoint (p < 0.1)",
+      escape = FALSE,
       col.names = c("Measure", "Timepoint", "Trained (Mean\u00B1SE)", "Untrained (Mean\u00B1SE)",
-                   "Difference (kg)", "p-value", "Significance")
-    ) %>%
-    kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+                     "Difference (kg)", "p-value"))
+  ))
 } else {
   cat("No significant differences between trained and untrained groups at any timepoint (p < 0.1)\n")
 }
@@ -993,7 +1031,7 @@ The results demonstrate that while both trained and untrained individuals benefi
 
 # Step 3: Calculate percent change
 
-```{r Percent Change, echo=FALSE}
+```{r Percent Change, echo=FALSE, results='asis'}
 # Filter mydata_combined to only strength data for percent change analysis
 mydata_strength_only <- mydata_combined %>%
   filter(DataType == "Strength") %>%  # This excludes all VO2 measures
@@ -1203,7 +1241,7 @@ comparison_results <- pivot_summary %>%
   select(Measure, Exercise, Timepoint, p.value)
 # View the results
 TvsU <- filter(comparison_results, p.value < 0.1)
-kable(TvsU, digits = 3, caption = "T-test results for TrainingStatus")
+cat(as.character(create_styled_kable(TvsU, caption = "T-test results for TrainingStatus", digits = 3)))
 
 file_name <- paste0(output_directory, "/", date, "TvsU_percent_change_summary.xlsx")
 write_xlsx(merged_summary, file_name)
@@ -1242,8 +1280,9 @@ overall_comparison_stats <- overall_percent_changes %>%
   do(tidy(t.test(PRE_to_POST ~ TrainingStatus, data = .))) %>%
   select(Measure, estimate, p.value)
 
-kable(overall_summary, caption = "Overall percent changes: 1RM vs 10RM")
-kable(filter(overall_comparison_stats, p.value < 0.1), caption = "Significant overall differences")
+cat(as.character(create_styled_kable(overall_summary, caption = "Overall percent changes: 1RM vs 10RM")))
+cat(as.character(create_styled_kable(filter(overall_comparison_stats, p.value < 0.1),
+  caption = "Significant overall differences")))
 ```
 
 ## Analysis of Percent Changes in Strength Measures
@@ -1294,12 +1333,17 @@ The percent change analysis provides valuable insights into the magnitude and ti
 
 The percent change analysis confirms that both trained and untrained individuals can achieve substantial strength improvements through resistance training, but aerobic fitness may enhance adaptation magnitude and consistency, particularly for upper body and technically demanding exercises. The large individual variability emphasizes the importance of personalized training approaches and monitoring.
 
-```{r Percent Change1, echo=FALSE}
-kable(percent_change_summary_with_pvalues, caption = "Percent change summary with p-values", digits = 3)
-kable(percent_change_by_upperlower, caption = "Percent change by upper and lower exercises", digits = 3)
-kable(percent_change_summary_with_pvalues_TvsU, caption = "Percent change summary with p-values for TrainingStatus", digits = 3)
-kable(percent_change_summary_with_pvalues_upperlower_TvsU, caption = "Percent change summary with p-values for upper and lower exercises for TrainingStatus", digits = 3)
-kable(min_max_values, caption = "Min and Max values for percent change", digits = 3)
+```{r Percent Change1, echo=FALSE, results='asis'}
+cat(as.character(create_styled_kable(percent_change_summary_with_pvalues,
+  caption = "Percent change summary with p-values", digits = 3)))
+cat(as.character(create_styled_kable(percent_change_by_upperlower,
+  caption = "Percent change by upper and lower exercises", digits = 3)))
+cat(as.character(create_styled_kable(percent_change_summary_with_pvalues_TvsU,
+  caption = "Percent change summary with p-values by TrainingStatus", digits = 3)))
+cat(as.character(create_styled_kable(percent_change_summary_with_pvalues_upperlower_TvsU,
+  caption = "Percent change: upper vs lower exercises by TrainingStatus", digits = 3)))
+cat(as.character(create_styled_kable(min_max_values,
+  caption = "Min and Max values for percent change", digits = 3)))
 ```
 
 
@@ -4455,18 +4499,18 @@ clean_combined_data <- clean_combined_data %>%
     by = c("Subject", "Exercise")
   )
 # Assuming 'clean_combined_data' has 'PRE_to_POST' for each 'Subject' and 'Exercise'
+# Compute correlation and p-value in separate across() calls to avoid list-of-2 error
 correlation_results <- clean_combined_data %>%
   group_by(Exercise) %>%
-  summarise(across(all_of(variables),
-                   ~list(correlation = cor(.x, PRE_to_POST, use = "complete.obs"),
-                         p_value = cor.test(.x, PRE_to_POST)$p.value),
-                   .names = "{.col}_{.fn}")) %>%
+  summarise(
+    across(all_of(variables),
+           ~cor(.x, PRE_to_POST, use = "complete.obs"),
+           .names = "{.col}_correlation"),
+    across(all_of(variables),
+           ~cor.test(.x, PRE_to_POST)$p.value,
+           .names = "{.col}_p_value")
+  ) %>%
   ungroup()
-
-# To unpack the list columns into separate correlation and p-value columns
-correlation_results <- correlation_results %>%
-  mutate(across(ends_with("_correlation"), ~map_dbl(.x, 1)),
-         across(ends_with("_p_value"), ~map_dbl(.x, 1)))
 
 # Using base R cor() function on the whole dataset
 # Select only the variables we want to correlate
@@ -4588,7 +4632,7 @@ for (i in 1:nrow(correlation_results_filtered)) {
 
 # HIIT session load progression
 
-```{r HIIT, echo=FALSE, message=FALSE, warning=FALSE}
+```{r HIIT, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
 # read in the Excel file
 mydata <- read_excel("MRP.xlsx", sheet = "Exercise session HIIT", skip = 3, col_names = FALSE)
 # Generate the new column names
@@ -4879,14 +4923,19 @@ for(test_week in available_weeks) {
     ))
   }
 }
-# Display results using kable (matching your existing style)
-kable(hr_t_test_results, digits = 3, 
-      caption = "Paired t-tests: Week 1 vs All Other Weeks (%APMHR)",
-      col.names = c("Comparison", "Week 1 Mean", "Week 1 SD", 
-                   "Other Week Mean", "Other Week SD", "Mean Diff", 
-                   "t-statistic", "p-value", "Significance")) %>%
-  kable_styling(bootstrap_options = c("striped", "hover")) %>%
-  column_spec(9, bold = ifelse(hr_t_test_results$significant != "ns", TRUE, FALSE))
+# Display results with cell_spec formatted p-values
+hr_display <- hr_t_test_results %>%
+  mutate(p_value = fmt_p(p_value)) %>%
+  dplyr::select(-significant)
+
+cat(as.character(
+  create_styled_kable(hr_display,
+    caption = "Paired t-tests: Week 1 vs All Other Weeks (%APMHR)",
+    escape = FALSE,
+    col.names = c("Comparison", "Week 1 Mean", "Week 1 SD",
+                  "Other Week Mean", "Other Week SD", "Mean Diff",
+                  "t-statistic", "p-value"))
+))
 
 # Summary of significant results
 significant_hr_results <- hr_t_test_results %>%
