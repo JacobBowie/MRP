@@ -123,6 +123,24 @@ format_pvalue <- function(p) {
 
 ```
 
+```{r overview-stats, echo=FALSE, message=FALSE, warning=FALSE}
+# Small summary object used in the Overview prose below. Kept separate from
+# `inline_stats` (built later, after LMM fitting) because the Overview paragraph
+# appears before that chunk runs.
+overview_stats <- list(
+  n_subjects   = length(unique(mydata_combined$Subject)),
+  n_trained    = length(trained_subjects),
+  n_untrained  = length(untrained_subjects),
+  n_measures   = length(unique(mydata_combined$Measure_Exercise))
+)
+```
+
+## Overview
+
+The **Maximal Returns Protocol (MRP)** is a 12-week, 1-hour-per-week concurrent training intervention combining HIIT, resistance training, and HIFT plyometrics. This analysis evaluates strength and physiological adaptations across `r overview_stats$n_subjects` participants (`r overview_stats$n_trained` aerobically trained, `r overview_stats$n_untrained` untrained) measured at PRE, MID, and POST timepoints across `r overview_stats$n_measures` outcome measures. The study was NASA CTSGC-funded (P-1708).
+
+Mixed-effects models (`lmer` with subject as random intercept) are fit per measure; pairwise post-hoc comparisons use `emmeans` with Tukey adjustment. Effect sizes reported as Hedges' *g* with small-sample correction.
+
 ## Assessing Normality and Homogeneity of Variance {.tabset}
 
 ### By Measure
@@ -1574,8 +1592,12 @@ format_p_value <- function(p) {
 
 # Create bar plots with individual points, aligned brackets and p-values
 # TODO Phase 6+: candidate for extraction to helpers/functions.R
+# FIXME: a second definition of create_barplot_with_brackets appears below at
+#   ~line 1750 with subtle differences (adds sex/training demographics,
+#   custom fill scale, different bracket heights). The second definition
+#   shadows this one for the downstream calls. Needs manual reconciliation.
 create_barplot_with_brackets <- function(data, rm_type, emmeans_results = NULL) {
-  
+
   # Prepare summary data
   summary_data <- data %>%
     group_by(Exercise, Time) %>%
@@ -1585,10 +1607,10 @@ create_barplot_with_brackets <- function(data, rm_type, emmeans_results = NULL) 
       .groups = "drop"
     ) %>%
     mutate(Exercise = reorder(Exercise, -mean_weight))
-  
+
   # Reorder the original data to match
   data$Exercise <- factor(data$Exercise, levels = levels(summary_data$Exercise))
-  
+
   # Define consistent bracket heights - lower to overlap with data points
   bracket_heights <- list(
     "PRE-MID" = 130,      # Lowest bracket
@@ -1741,8 +1763,12 @@ print(rm1s_plot_brackets)
 
 # Create bar plots with individual points, aligned brackets and p-values
 # TODO Phase 6+: candidate for extraction to helpers/functions.R
+# FIXME: duplicate defined above at ~line 1580 with subtle differences
+#   (no demographics, different bracket heights). This definition shadows
+#   the earlier one and is what gets used by the downstream ggarrange call.
+#   Needs manual reconciliation.
 create_barplot_with_brackets <- function(data, rm_type, emmeans_results = NULL) {
-  
+
   # Add sex and training status information to the data
   data_with_demographics <- data %>%
     left_join(sex_mapping, by = "Subject") %>%
@@ -3066,7 +3092,7 @@ RE_plot <-
   labs(x = "", y = y_axis_label, fill = "") +
   scale_fill_mrp_time() +
   scale_y_continuous(limits = c(0, 60), breaks = seq(0, 60, 10)) +  # Manual y-axis limits and tick marks
-  theme_bw() +
+  theme_pubr() +
   theme(legend.position = c(0.1, 0.9),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -3093,7 +3119,7 @@ RE_plot_T <-
   labs(x = "", y = y_axis_label, fill = "") +
   scale_fill_mrp_time() +
   scale_y_continuous(limits = c(0, 60), breaks = seq(0, 60, 10)) +  # Manual y-axis limits and tick marks
-  theme_bw() +
+  theme_pubr() +
   theme(legend.position = c(0.1, 0.9),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -3117,7 +3143,7 @@ RE_plot_U <-
   labs(x = "", y = y_axis_label, fill = "") +
   scale_fill_mrp_time() +
   scale_y_continuous(limits = c(0, 60), breaks = seq(0, 60, 10)) +  # Manual y-axis limits and tick marks
-  theme_bw() +
+  theme_pubr() +
   theme(legend.position = c(0.1, 0.9),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -3142,7 +3168,7 @@ VJ_plot <-
   geom_bar(stat = "identity", position = "dodge") +
   labs(x = "", y = "Inches", fill = "") +
   scale_fill_mrp_time() +
-  theme_bw() +
+  theme_pubr() +
   theme(legend.position = c(0.1, 1),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -3167,7 +3193,7 @@ WM_plot <-
   geom_bar(stat = "identity", position = "dodge") +
   labs(x = "Maximum wattage during VO2 test", y = "Watts", fill = "") +
   scale_fill_mrp_time() +
-  theme_bw() +
+  theme_pubr() +
   theme(legend.position = element_blank(),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -3194,7 +3220,7 @@ WM_plot_T <-
             position = position_dodge(width = 0.9), size = 10) +
   labs(x = "Trained", y = "Watts", fill = "") +
   scale_fill_mrp_time() +
-  theme_bw() +
+  theme_pubr() +
   theme(legend.position = element_blank(),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -3216,7 +3242,7 @@ WM_plot_U <-
   geom_errorbar(aes(ymin = mean, ymax = mean + sd), width = 0.2, position = position_dodge(0.9)) +
   labs(x = "Untrained", y = "Watts", fill = "") +
   scale_fill_mrp_time() +
-  theme_bw() +
+  theme_pubr() +
   theme(legend.position = element_blank(),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -3241,7 +3267,7 @@ BC_plot <-
   labs(x = "All", y = "", fill = "") +
   scale_fill_mrp_time() +
   scale_y_continuous(limits = c(0, 125), breaks = seq(0, 125, 25)) +
-  theme_bw() +
+  theme_pubr() +
   theme(legend.position = c(0.1, 0.9),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -3266,7 +3292,7 @@ BC_plot_T <-
   labs(x = "Trained", y = "", fill = "") +
   scale_fill_mrp_time() +
     scale_y_continuous(limits = c(0, 125), breaks = seq(0, 125, 25)) +
-  theme_bw() +
+  theme_pubr() +
   theme(legend.position = c(0.1, 0.9),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -3288,7 +3314,7 @@ BC_plot_U <-
   labs(x = "Untrained", y = "", fill = "") +
   scale_fill_mrp_time() +
     scale_y_continuous(limits = c(0, 125), breaks = seq(0, 125, 25)) +
-  theme_bw() +
+  theme_pubr() +
   theme(legend.position = c(0.1, 0.9),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -3317,7 +3343,7 @@ YY_plot <-
   geom_bar(stat = "identity", position = "dodge") +
   labs(x = "YYIR-2", y = "Meters", fill = "") +
   scale_fill_mrp_time() +
-  theme_bw() +
+  theme_pubr() +
   theme(legend.position = c(0.1, .95),
         panel.grid.major = element_blank(),
         panel.grid.minor = element_blank(),
@@ -3448,7 +3474,7 @@ for (exercise in unique_exercises) {
     labs(x = "Week", y = "kg",
          title = paste(exercise)) +
     scale_y_continuous(limits = c(0, 101), breaks = seq(0, 100, by = 20)) +
-    theme_minimal() +
+    theme_pubr() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
           panel.grid.major = element_blank(),
           panel.grid.minor = element_blank(),
@@ -3634,7 +3660,7 @@ for (exercise in unique_exercises) {
     geom_col(fill = dark_blue_color) +
     labs(x = "Week", y = "Volume Load",
          title = paste(exercise)) +
-        theme_minimal() +
+        theme_pubr() +
     scale_y_continuous(limits = c(0, 3250), breaks = seq(0, 3250, by = 500)) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
           panel.grid.major = element_blank(),
@@ -4025,7 +4051,7 @@ for (exercise in unique_exercises) {
               size = 5) +
     labs(x = "Week", y = "Relative Volume Load",
          title = paste(exercise)) +
-    theme_minimal() +
+    theme_pubr() +
     scale_y_continuous(limits = c(0, 35), breaks = seq(0, 30, by = 10)) +
     theme(axis.text.x = element_text(angle = 0, hjust = 1, color = "black"),
           axis.text.y = element_text(color = "black"),
@@ -4542,7 +4568,7 @@ for (exercise in unique_exercises) {
      geom_hline(yintercept = 22.5, linetype="dashed", color = light_blue_color , linewidth = 1) +  # Adding horizontal line at y = 22.5
     labs(x = "Week", y = "Relative Volume Load",
          title = paste(exercise)) +
-    theme_minimal() +
+    theme_pubr() +
     scale_y_continuous(limits = c(0, 35), breaks = seq(0, 30, by = 10)) +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
           panel.grid.major = element_blank(),
@@ -4856,7 +4882,7 @@ load_plot1 <- ggplot(load_summary, aes(x = week, y = mean_load)) +
   geom_errorbar(aes(ymin = mean_load - sd_load, ymax = mean_load + sd_load), width = 0.25) +
   geom_col(fill = dark_blue_color, width = 0.7) +
   labs(x = "Week", y = "Watts", title = "HIIT Mean Load per Week") +
-  theme_minimal()+
+  theme_pubr()+
    theme(
     panel.grid.major = element_blank(),  # Remove major grid lines
     panel.grid.minor = element_blank(),  # Remove minor grid lines
@@ -4879,7 +4905,7 @@ load_plot <- ggplot(load_summary, aes(x = week, y = mean_load)) +
   geom_col(fill = dark_blue_color, width = 0.7) +
   facet_wrap(~TrainingStatus) +
   labs(x = "Week", y = "Watts", title = "HIIT Mean Load per Week") +
-  theme_minimal()+
+  theme_pubr()+
    theme(
     panel.grid.major = element_blank(),  # Remove major grid lines
     panel.grid.minor = element_blank(),  # Remove minor grid lines
@@ -6616,164 +6642,185 @@ if (SAVE_PDFS) ggsave(file_name_plot_final, final_plot, width = 6.5, height = 6,
 
 # Power Analysis
 
-```{r Power , echo=FALSE, message=FALSE, warning=FALSE}
-# VO2max Detraining Power Analysis
-# Based on Coyle et al. (1984) data
-# Author: [Your Name]
-
-
-# Date: [Current Date]
-
-# Load required libraries
+```{r power-setup, echo=FALSE, message=FALSE, warning=FALSE}
+# VO2max Detraining Power Analysis — based on Coyle et al. (1984)
 library(pwr)
 library(ggplot2)
 library(dplyr)
 
 # VO2max values from Coyle et al. (1984)
 baseline_vo2max <- 62.1  # ml/kg/min (calculated from 16% decline)
-day84_vo2max <- 50.8     # ml/kg/min (actual measured value)
+day84_vo2max    <- 50.8  # ml/kg/min (actual measured value)
 
-# Calculate effect size (Cohen's d)
-# Assuming SD from literature (typically 6-8 ml/kg/min for trained individuals)
-pooled_sd <- 8.0  # ml/kg/min (conservative estimate)
+# Effect size (Cohen's d) using a conservative pooled SD from the literature
+pooled_sd       <- 8.0
 mean_difference <- baseline_vo2max - day84_vo2max
-effect_size <- mean_difference / pooled_sd
+effect_size     <- mean_difference / pooled_sd
+alpha           <- 0.05
 
-mean_difference <- baseline_vo2max - day84_vo2max
-effect_size <- mean_difference / pooled_sd
-
-cat("=== VO2max Detraining Study Parameters ===\n")
-cat(sprintf("Baseline VO2max: %.1f ml/kg/min\n", baseline_vo2max))
-cat(sprintf("84-day VO2max: %.1f ml/kg/min\n", day84_vo2max))
-cat(sprintf("Mean difference: %.1f ml/kg/min\n", mean_difference))
-cat(sprintf("Pooled SD: %.1f ml/kg/min\n", pooled_sd))
-cat(sprintf("Effect size (Cohen's d): %.3f\n", effect_size))
-cat(sprintf("Percent change: %.1f%%\n\n", (mean_difference/baseline_vo2max)*100))
-
-# Power analysis for different scenarios
-alpha <- 0.05  # Type I error rate
+# Sample-size requirements across target power levels (paired design)
 power_levels <- c(0.80, 0.85, 0.90, 0.95)
+sample_sizes <- tibble::tibble(
+  Power         = sprintf("%.2f", power_levels),
+  Alpha         = sprintf("%.2f", rep(alpha, length(power_levels))),
+  `Effect size` = sprintf("%.3f", rep(effect_size, length(power_levels))),
+  `n per group` = vapply(power_levels, function(p) {
+    as.integer(ceiling(pwr.t.test(d = effect_size, sig.level = alpha,
+                                  power = p, type = "paired")$n))
+  }, integer(1))
+)
 
-cat("=== Sample Size Requirements ===\n")
-cat("Power\tAlpha\tEffect Size\tSample Size (per group)\n")
-cat("-----\t-----\t-----------\t-------------------\n")
+# Sensitivity analysis: sample size across a range of effect sizes (power = 0.80)
+effect_size_grid <- seq(0.5, 2.0, 0.25)
+sensitivity_data <- data.frame(
+  effect_size = effect_size_grid,
+  n = vapply(effect_size_grid, function(es) {
+    as.integer(ceiling(pwr.t.test(d = es, sig.level = alpha,
+                                  power = 0.80, type = "paired")$n))
+  }, integer(1))
+)
+sensitivity_tbl <- sensitivity_data %>%
+  transmute(
+    `Effect size`   = sprintf("%.2f", effect_size),
+    Power           = "0.80",
+    `n per group`   = n
+  )
 
-sample_sizes <- data.frame()
-for(power in power_levels) {
-  n <- pwr.t.test(d = effect_size, sig.level = alpha, power = power, 
-                  type = "paired")$n
-  cat(sprintf("%.2f\t%.2f\t%.3f\t\t%.0f\n", power, alpha, effect_size, ceiling(n)))
-  sample_sizes <- rbind(sample_sizes, 
-                       data.frame(power = power, n = ceiling(n)))
-}
-
-# Power analysis with different effect sizes (sensitivity analysis)
-cat("\n=== Sensitivity Analysis: Different Effect Sizes ===\n")
-cat("Effect Size\tPower\tSample Size (per group)\n")
-cat("-----------\t-----\t-------------------\n")
-
-effect_sizes <- seq(0.5, 2.0, 0.25)
-sensitivity_data <- data.frame()
-
-for(es in effect_sizes) {
-  n_80 <- ceiling(pwr.t.test(d = es, sig.level = alpha, power = 0.80, 
-                            type = "paired")$n)
-  cat(sprintf("%.2f\t\t0.80\t%.0f\n", es, n_80))
-  sensitivity_data <- rbind(sensitivity_data, 
-                           data.frame(effect_size = es, n = n_80))
-}
-
-# Create power curve
-power_curve_data <- data.frame()
+# Power curve across candidate sample sizes (paired design, fixed effect size)
 n_range <- seq(5, 50, 2)
+power_curve_data <- data.frame(
+  n     = n_range,
+  power = vapply(n_range, function(n) {
+    pwr.t.test(n = n, d = effect_size, sig.level = alpha,
+               type = "paired")$power
+  }, numeric(1))
+)
 
-for(n in n_range) {
-  power_calc <- pwr.t.test(n = n, d = effect_size, sig.level = alpha, 
-                          type = "paired")$power
-  power_curve_data <- rbind(power_curve_data, 
-                           data.frame(n = n, power = power_calc))
-}
+# Design comparison for the observed effect size
+n_crossover   <- ceiling(pwr.t.test(d = effect_size, sig.level = alpha,
+                                    power = 0.80, type = "paired")$n)
+n_independent <- ceiling(pwr.t.test(d = effect_size, sig.level = alpha,
+                                    power = 0.80, type = "two.sample")$n)
+f_effect_size <- effect_size / 2
+n_anova       <- ceiling(pwr.anova.test(k = 4, f = f_effect_size,
+                                        sig.level = alpha, power = 0.80)$n)
+n_90          <- ceiling(pwr.t.test(d = effect_size, sig.level = alpha,
+                                    power = 0.90, type = "paired")$n)
+dropout_rate  <- 0.15
+final_n       <- ceiling(n_crossover / (1 - dropout_rate))
 
-# Plot 1: Power curve
+design_tbl <- tibble::tibble(
+  `Study design`                                 = c(
+    "Crossover / paired (80% power)",
+    "Independent groups (80% power, per group)",
+    "Independent groups (80% power, total)",
+    "Repeated-measures ANOVA, 4 timepoints (80% power)"
+  ),
+  `Required n` = c(n_crossover, n_independent, n_independent * 2, n_anova)
+)
+```
+
+### Study parameters
+
+```{r power-params-table, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+params_tbl <- tibble::tibble(
+  Quantity = c("Baseline VO\u2082max", "84-day VO\u2082max",
+               "Mean difference", "Pooled SD",
+               "Effect size (Cohen's *d*)", "Percent change"),
+  Value = c(
+    sprintf("%.1f ml/kg/min", baseline_vo2max),
+    sprintf("%.1f ml/kg/min", day84_vo2max),
+    sprintf("%.1f ml/kg/min", mean_difference),
+    sprintf("%.1f ml/kg/min", pooled_sd),
+    sprintf("%.3f", effect_size),
+    sprintf("%.1f%%", (mean_difference / baseline_vo2max) * 100)
+  )
+)
+cat(as.character(
+  create_styled_kable(params_tbl,
+    caption = "VO\u2082max detraining study parameters (Coyle et al., 1984)")
+))
+```
+
+### Sample-size requirements
+
+```{r power-samplesize-table, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+cat(as.character(
+  create_styled_kable(sample_sizes,
+    caption = "Required sample size per power level (paired design)")
+))
+```
+
+### Sensitivity analysis
+
+```{r power-sensitivity-table, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+cat(as.character(
+  create_styled_kable(sensitivity_tbl,
+    caption = "Required sample size across plausible effect sizes (power = 0.80)")
+))
+```
+
+### Power curve
+
+```{r power-plot-curve, echo=FALSE, message=FALSE, warning=FALSE, fig.width=7, fig.height=4.5}
 p1 <- ggplot(power_curve_data, aes(x = n, y = power)) +
   geom_line(color = "#2E8B57", size = 1.2) +
   geom_hline(yintercept = 0.80, linetype = "dashed", color = "#B22222") +
-  geom_vline(xintercept = ceiling(pwr.t.test(d = effect_size, sig.level = alpha, 
-                                            power = 0.80, type = "paired")$n),
+  geom_vline(xintercept = n_crossover,
              linetype = "dashed", color = "#B22222") +
-  labs(title = "Power Curve for VO2max Detraining Study",
+  labs(title = "Power curve for VO2max detraining study",
        subtitle = paste("Effect size (Cohen's d) =", round(effect_size, 3)),
-       x = "Sample Size (n per group)",
-       y = "Statistical Power",
+       x = "Sample size (n per group)",
+       y = "Statistical power",
        caption = "Red lines indicate 80% power threshold") +
-  theme_minimal() +
+  theme_pubr() +
   theme(plot.title = element_text(face = "bold", size = 14),
         plot.subtitle = element_text(size = 12),
         axis.title = element_text(size = 12)) +
   scale_y_continuous(breaks = seq(0, 1, 0.1), limits = c(0, 1)) +
   scale_x_continuous(breaks = seq(0, 50, 5))
 
-# Plot 2: Sample size vs effect size
 p2 <- ggplot(sensitivity_data, aes(x = effect_size, y = n)) +
   geom_line(color = "#4682B4", size = 1.2) +
   geom_point(color = "#4682B4", size = 2) +
   geom_vline(xintercept = effect_size, linetype = "dashed", color = "#B22222") +
-  labs(title = "Sample Size Requirements vs Effect Size",
-       subtitle = "Power = 0.80, α = 0.05",
-       x = "Effect Size (Cohen's d)",
-       y = "Required Sample Size (n per group)",
+  labs(title = "Sample-size requirements vs effect size",
+       subtitle = "Power = 0.80, \u03b1 = 0.05",
+       x = "Effect size (Cohen's d)",
+       y = "Required sample size (n per group)",
        caption = "Red line indicates observed effect size from Coyle et al. (1984)") +
-  theme_minimal() +
+  theme_pubr() +
   theme(plot.title = element_text(face = "bold", size = 14),
         plot.subtitle = element_text(size = 12),
         axis.title = element_text(size = 12)) +
   scale_y_continuous(breaks = seq(0, max(sensitivity_data$n), 5)) +
   scale_x_continuous(breaks = seq(0.5, 2.0, 0.25))
 
-# Display plots
 print(p1)
 print(p2)
-
-# Additional calculations for different study designs
-cat("\n=== Power Analysis for Different Study Designs ===\n")
-
-# Crossover design (more powerful)
-cat("Crossover Design (paired t-test):\n")
-n_crossover <- ceiling(pwr.t.test(d = effect_size, sig.level = alpha, 
-                                 power = 0.80, type = "paired")$n)
-cat(sprintf("Required sample size: %d participants\n", n_crossover))
-
-# Independent groups design
-cat("\nIndependent Groups Design (two-sample t-test):\n")
-n_independent <- ceiling(pwr.t.test(d = effect_size, sig.level = alpha, 
-                                   power = 0.80, type = "two.sample")$n)
-cat(sprintf("Required sample size: %d per group (%d total)\n", 
-    n_independent, n_independent * 2))
-
-# ANOVA for multiple time points (assuming 4 time points)
-cat("\nRepeated Measures ANOVA (4 time points):\n")
-f_effect_size <- effect_size / 2  # Convert Cohen's d to f
-n_anova <- ceiling(pwr.anova.test(k = 4, f = f_effect_size, sig.level = alpha, 
-                                 power = 0.80)$n)
-cat(sprintf("Required sample size: %d participants\n", n_anova))
-
-# Summary recommendations
-cat("\n=== RECOMMENDATIONS ===\n")
-cat("Based on Coyle et al. (1984) detraining data:\n")
-cat(sprintf("• Effect size is LARGE (d = %.3f)\n", effect_size))
-cat(sprintf("• For 80%% power: n = %d participants (paired design)\n", n_crossover))
-cat(sprintf("• For 90%% power: n = %d participants (paired design)\n", 
-    ceiling(pwr.t.test(d = effect_size, sig.level = alpha, 
-                      power = 0.90, type = "paired")$n)))
-cat("• Paired/crossover design is most efficient\n")
-cat("• Consider multiple time points for mechanistic insights\n")
-cat("• Account for 15-20% dropout rate in recruitment\n")
-
-# Calculate final recommended sample size with dropout
-dropout_rate <- 0.15
-final_n <- ceiling(n_crossover / (1 - dropout_rate))
-cat(sprintf("• Recommended recruitment: n = %d (accounting for 15%% dropout)\n", final_n))
 ```
+
+### Design comparison
+
+```{r power-design-table, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+cat(as.character(
+  create_styled_kable(design_tbl,
+    caption = "Required sample size by study design (power = 0.80, \u03b1 = 0.05)")
+))
 ```
+
+### Recommendations
+
+Based on the Coyle et al. (1984) detraining data, the observed effect size is **large** (*d* = `r sprintf("%.3f", effect_size)`). A paired / crossover design is the most efficient: `r n_crossover` participants achieve 80% power, and `r n_90` participants achieve 90% power. Accounting for a `r sprintf("%.0f%%", dropout_rate * 100)` dropout rate, recommended recruitment is **n = `r final_n`** participants. Multiple time points are advisable for mechanistic insight.
 ```
+
+---
+
+<details>
+<summary><strong>Session info (click to expand)</strong></summary>
+
+```{r session-info, echo=FALSE}
+sessionInfo()
 ```
+
+</details>
