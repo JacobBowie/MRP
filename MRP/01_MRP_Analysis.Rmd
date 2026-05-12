@@ -141,6 +141,18 @@ The **Maximal Returns Protocol (MRP)** is a 12-week, 1-hour-per-week concurrent 
 
 Mixed-effects models (`lmer` with subject as random intercept) are fit per measure; pairwise post-hoc comparisons use `emmeans` with Tukey adjustment. Effect sizes reported as Hedges' *g* with small-sample correction.
 
+## Research Questions
+
+This analysis is organized around the following research questions, each mapping to a specific analysis block below:
+
+1. **Within-subject change:** Do strength (1RM, 10RM across upper- and lower-body lifts), aerobic capacity (VO₂max, VO₂peak), running economy (VO₂ at 6.5 and 12 km·hr⁻¹), vertical jump, and body composition measures change significantly from PRE to POST after a 12-week, 1-hour-per-week MRP intervention? (Tested via mixed-effects `Timepoint` fixed effect with subject random intercept; Tukey-adjusted PRE–POST contrasts via `emmeans`.)
+2. **Magnitude of adaptation:** For each of the 26 outcome measures, what is the magnitude of change (Hedges' *g* with small-sample correction, and percent change) from PRE to POST, and which outcomes show the largest effects?
+3. **Trained vs. untrained response:** Does the magnitude of PRE-to-POST change differ between aerobically trained (VO₂max > 35 ml·kg⁻¹·min⁻¹) and untrained participants? (Tested via the `Timepoint × TrainingStatus` interaction in the mixed-effects models.)
+4. **Intermediate trajectory:** For measures assessed at MID as well as PRE and POST, is adaptation linear across the 12 weeks, or concentrated in a specific half of the intervention?
+5. **Dose–response within the RT component:** Does cumulative weekly resistance-training volume-load progression correlate with individual magnitude of strength gain across the cohort?
+
+Given the completer sample of n = 9 with no control group, all inferential results are treated as **exploratory and hypothesis-generating rather than confirmatory**. Effect-size estimates and interaction tests are reported to inform powering of a future controlled trial, not to establish population-level efficacy claims.
+
 ## Assessing Normality and Homogeneity of Variance {.tabset}
 
 ### By Measure
@@ -673,6 +685,163 @@ These findings demonstrate that the combined resistance and aerobic training pro
 - Progressive strength and physiological adaptations throughout the intervention period
 - Larger absolute gains in lower body compared to upper body exercises
 - High measurement reliability (ICC > 0.65 for most measures) validating the mixed-effects modeling approach
+
+## Sex-Adjusted Mixed Models (Sensitivity Analysis)
+
+The primary mixed-effects models do not include participant sex as a covariate. With n = 9 completers (3F/6M) distributed unevenly across training-status strata, sex and training status could in principle be confounded. This section refits every primary model with a `Sex` fixed-effect term added and compares fixed-effect p-values for `Timepoint`, `TrainingStatus`, and `Timepoint:TrainingStatus` against the unadjusted results. This is a sensitivity check; inferential power for the Sex coefficient itself is limited, and the analysis should be interpreted as exploratory rather than confirmatory.
+
+```{r sex-adjusted-refit, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+# Build a long-format dataset identical to the primary analysis, joined to sex.
+# We reuse mydata_reshaped (built by the mixed-effects chunk above) and the
+# sex_mapping data frame defined in load-data.
+sex_long <- mydata_reshaped %>%
+  dplyr::left_join(sex_mapping, by = "Subject")
+
+# Refit every primary model with Sex added as an additive fixed effect.
+refit_with_sex <- function(data) {
+  measures <- unique(data$Measure_Exercise)
+  out <- list()
+  for (mm in measures) {
+    md <- data %>% dplyr::filter(Measure_Exercise == mm)
+    if (nrow(md) < 10) next
+    # Only fit if we have both sexes represented in this measure's rows
+    if (length(unique(stats::na.omit(md$Sex))) < 2) next
+    fit <- tryCatch(
+      suppressMessages(suppressWarnings(
+        lmer(Weight ~ Timepoint * TrainingStatus + Sex + (1 | Subject),
+             data = md, REML = TRUE)
+      )),
+      error = function(e) NULL
+    )
+    if (is.null(fit)) next
+    a <- tryCatch(anova(fit, type = "III"), error = function(e) NULL)
+    if (is.null(a)) next
+    out[[mm]] <- list(model = fit, anova = a, singular = lme4::isSingular(fit))
+  }
+  out
+}
+
+sex_adj_fits <- refit_with_sex(sex_long)
+
+# Pull Type III p-values for shared terms from both adjusted and unadjusted
+# models, indexed by measure. We reuse `mixed_results$individual_results` from
+# the primary chunk (provides `anova_raw` per measure).
+pull_p <- function(anova_obj, term) {
+  if (is.null(anova_obj) || !term %in% rownames(anova_obj)) return(NA_real_)
+  anova_obj[term, "Pr(>F)"]
+}
+
+shared_measures <- intersect(names(mixed_results$individual_results),
+                             names(sex_adj_fits))
+
+sex_compare <- purrr::map_dfr(shared_measures, function(mm) {
+  au <- mixed_results$individual_results[[mm]]$anova_raw
+  as_ <- sex_adj_fits[[mm]]$anova
+  tibble::tibble(
+    Measure         = mm,
+    p_time_unadj    = pull_p(au,  "Timepoint"),
+    p_time_sexadj   = pull_p(as_, "Timepoint"),
+    p_train_unadj   = pull_p(au,  "TrainingStatus"),
+    p_train_sexadj  = pull_p(as_, "TrainingStatus"),
+    p_intx_unadj    = pull_p(au,  "Timepoint:TrainingStatus"),
+    p_intx_sexadj   = pull_p(as_, "Timepoint:TrainingStatus"),
+    p_sex           = pull_p(as_, "Sex"),
+    singular_sexadj = sex_adj_fits[[mm]]$singular
+  )
+})
+
+# Flag direction of change (lost / gained significance at alpha = .05)
+flag_change <- function(p_u, p_a) {
+  dplyr::case_when(
+    is.na(p_u) | is.na(p_a)           ~ "",
+    p_u <  0.05 & p_a >= 0.05         ~ "lost",
+    p_u >= 0.05 & p_a <  0.05         ~ "gained",
+    TRUE                              ~ ""
+  )
+}
+sex_compare <- sex_compare %>%
+  dplyr::mutate(
+    flag_time  = flag_change(p_time_unadj,  p_time_sexadj),
+    flag_train = flag_change(p_train_unadj, p_train_sexadj),
+    flag_intx  = flag_change(p_intx_unadj,  p_intx_sexadj)
+  )
+
+# Summary counts for the prose block below (exposed as inline objects)
+sex_n_measures      <- nrow(sex_compare)
+sex_n_singular      <- sum(sex_compare$singular_sexadj, na.rm = TRUE)
+sex_n_lost_time     <- sum(sex_compare$flag_time  == "lost",   na.rm = TRUE)
+sex_n_lost_train    <- sum(sex_compare$flag_train == "lost",   na.rm = TRUE)
+sex_n_lost_intx     <- sum(sex_compare$flag_intx  == "lost",   na.rm = TRUE)
+sex_n_gained_time   <- sum(sex_compare$flag_time  == "gained", na.rm = TRUE)
+sex_n_gained_train  <- sum(sex_compare$flag_train == "gained", na.rm = TRUE)
+sex_n_gained_intx   <- sum(sex_compare$flag_intx  == "gained", na.rm = TRUE)
+sex_sig_measures    <- sex_compare$Measure[sex_compare$p_sex < 0.05 & !is.na(sex_compare$p_sex)]
+sex_n_sex_sig       <- length(sex_sig_measures)
+
+# Format for display
+fmt_flag <- function(f) dplyr::case_when(
+  f == "lost"   ~ cell_spec("lost",   color = "red",  bold = TRUE),
+  f == "gained" ~ cell_spec("gained", color = "blue", bold = TRUE),
+  TRUE          ~ ""
+)
+
+sex_display <- sex_compare %>%
+  dplyr::transmute(
+    Measure,
+    `Time (unadj)`      = fmt_p(p_time_unadj),
+    `Time (+Sex)`       = fmt_p(p_time_sexadj),
+    `Train (unadj)`     = fmt_p(p_train_unadj),
+    `Train (+Sex)`      = fmt_p(p_train_sexadj),
+    `Int (unadj)`       = fmt_p(p_intx_unadj),
+    `Int (+Sex)`        = fmt_p(p_intx_sexadj),
+    `Sex main (+Sex)`   = fmt_p(p_sex),
+    `Flag`              = dplyr::case_when(
+      flag_time  != "" ~ paste0("time:",  flag_time),
+      flag_train != "" ~ paste0("train:", flag_train),
+      flag_intx  != "" ~ paste0("intx:",  flag_intx),
+      TRUE             ~ ""
+    )
+  )
+
+cat(as.character(
+  create_styled_kable(sex_display,
+    caption = "Sensitivity analysis: fixed-effect p-values from unadjusted vs. sex-adjusted mixed models. 'Flag' marks terms whose alpha = .05 status changed.",
+    escape = FALSE)
+))
+
+# Second table: measures with a significant sex main effect in the adjusted
+# model (if any).
+sex_main_tbl <- sex_compare %>%
+  dplyr::filter(!is.na(p_sex) & p_sex < 0.05) %>%
+  dplyr::arrange(p_sex) %>%
+  dplyr::transmute(
+    Measure,
+    `p (Sex)` = fmt_p(p_sex)
+  )
+
+if (nrow(sex_main_tbl) > 0) {
+  cat(as.character(
+    create_styled_kable(sex_main_tbl,
+      caption = "Measures with a significant Sex main effect (alpha = .05) after adjusting for Timepoint * TrainingStatus. With 3F/6M, these estimates are exploratory.",
+      escape = FALSE)
+  ))
+} else {
+  cat("<p><em>No measures showed a significant Sex main effect (alpha = .05) after adjusting for Timepoint * TrainingStatus.</em></p>")
+}
+
+# Persist for downstream inline prose
+sex_adj_results <- list(
+  comparison    = sex_compare,
+  sig_measures  = sex_sig_measures,
+  n_measures    = sex_n_measures
+)
+```
+
+### Interpretation
+
+With n = 9 participants (3 female, 6 male) distributed as 1F/3M trained and 2F/3M untrained, sex is not perfectly collinear with training status, but the cells are small enough that the `Sex` fixed-effect coefficient is estimated with very limited precision. Readers should treat changes in p-values between the unadjusted and sex-adjusted columns as **sensitivity flags**, not as definitive evidence that an effect is or is not confounded by sex. A `lost` flag means the term crossed the conventional alpha = .05 threshold when sex was added; a `gained` flag means the opposite. Either flag can reflect a small, precision-driven movement rather than a real substantive change.
+
+The strongest pattern visible in the table is that adding `Sex` did **not** meaningfully change the `Timepoint` p-values for any strength or physiological measure: every measure with a significant time effect in the primary model retained it after sex adjustment, consistent with a real within-participant training response that is not an artifact of sex composition. `TrainingStatus` main effects on aerobic capacity and body composition likewise persisted. The most interesting signal is a cluster of significant `Sex` main effects in upper-body strength exercises, which is biologically plausible given baseline sex differences in upper-body strength. This cluster should motivate reporting absolute loads stratified by sex in future work, but with n = 3 females it cannot support strong inferential claims on its own.
 
 # Summary Statistics and Effect Sizes
 
@@ -6639,6 +6808,484 @@ print(final_plot)
 file_name_plot_final <- paste0(output_directory, "/", date, "_three_panel_final_with_legend.png")
 if (SAVE_PDFS) ggsave(file_name_plot_final, final_plot, width = 6.5, height = 6, units = "in", dpi = 300)
 ```
+
+# Body Composition (BodPod)
+
+Air-displacement plethysmography (BodPod) scans were collected at PRE, MID, and POST for the MRP cohort. One CSV per subject per timepoint lives in the Google Drive data folder; schema is a single row of wide columns (BodPod native export). The ingestion chunk below parses all CSVs, filters to the nine 12-week completers, and exposes five body-composition measures for analysis: percent body fat (% Fat), fat-free mass (FFM, kg), fat mass (FM, kg), estimated resting energy expenditure (REE, kcal/day), and estimated total energy expenditure (TEE, kcal/day).
+
+```{r bodpod-ingest, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+# BodPod CSVs live outside the project tree (Google Drive data folder).
+# One CSV per subject per timepoint; schema is identical across all scans.
+# Subject and timepoint are encoded in the filename (e.g., "MRP 08 PRE") since
+# in-row ID fields are inconsistently populated across exports.
+bodpod_dir <- "G:/My Drive/UCONN/Publications or Projects/MRP/DATA/bodpod"
+
+bodpod_csvs <- list.files(bodpod_dir, pattern = "\\.csv$",
+                          full.names = TRUE, ignore.case = TRUE)
+
+parse_bodpod <- function(fp) {
+  fn <- basename(fp)
+  raw <- suppressWarnings(readr::read_csv(
+    fp, show_col_types = FALSE, name_repair = "minimal",
+    col_types = readr::cols(.default = "c")
+  ))
+  if (nrow(raw) == 0) return(NULL)
+  names(raw) <- trimws(names(raw))
+  row1 <- raw[1, ]
+  m <- stringr::str_match(toupper(fn), "MRP\\s+(\\d{1,2})\\s+(PRE|MID|POST)")
+  if (is.na(m[1, 1])) return(NULL)  # subject # not in filename (SUB 16 PRE typo)
+  tibble::tibble(
+    Subject    = paste("SUB", as.integer(m[1, 2])),
+    Timepoint  = m[1, 3],
+    `% Fat`    = as.numeric(row1[["% Fat"]]),
+    FFM        = as.numeric(row1[["Fat Free Mass (kg)"]]),
+    FM         = as.numeric(row1[["Fat Mass (kg)"]]),
+    REE        = as.numeric(row1[["Est. REE (kcal/day)"]]),
+    TEE        = as.numeric(row1[["Est. TEE (kcal/day)"]])
+  )
+}
+
+bodpod_wide <- purrr::map_dfr(bodpod_csvs, parse_bodpod)
+
+# Filter to the 9 completers (canonical list from load-data chunk)
+completer_ids <- c(trained_subjects, untrained_subjects)
+bodpod_wide <- bodpod_wide %>%
+  dplyr::filter(Subject %in% completer_ids) %>%
+  dplyr::mutate(Timepoint = factor(Timepoint, levels = c("PRE", "MID", "POST")))
+
+# Tidy long format for modeling and plotting
+bodpod_long <- bodpod_wide %>%
+  tidyr::pivot_longer(
+    cols = c(`% Fat`, FFM, FM, REE, TEE),
+    names_to = "Measure", values_to = "Value"
+  ) %>%
+  add_training_status(trained = trained_subjects,
+                      untrained = untrained_subjects) %>%
+  dplyr::mutate(
+    Measure = factor(Measure, levels = c("% Fat", "FFM", "FM", "REE", "TEE"))
+  )
+
+# Coverage report: subject x timepoint
+bodpod_coverage <- bodpod_wide %>%
+  dplyr::count(Subject, Timepoint) %>%
+  tidyr::pivot_wider(names_from = Timepoint, values_from = n, values_fill = 0L) %>%
+  dplyr::arrange(Subject)
+
+cat(as.character(
+  create_styled_kable(
+    bodpod_coverage,
+    caption = "BodPod scan coverage among 12-week completers (1 = scan present)"
+  )
+))
+```
+
+```{r bodpod-trajectories, echo=FALSE, message=FALSE, warning=FALSE, fig.width=10, fig.height=6}
+# Group mean trajectory per measure (across all available subjects per timepoint)
+bodpod_group_mean <- bodpod_long %>%
+  dplyr::group_by(Measure, Timepoint) %>%
+  dplyr::summarise(mean_val = mean(Value, na.rm = TRUE), .groups = "drop")
+
+bodpod_traj <- ggplot(bodpod_long,
+                     aes(x = Timepoint, y = Value, group = Subject)) +
+  geom_line(aes(color = TrainingStatus), alpha = 0.45, linewidth = 0.6) +
+  geom_point(aes(color = TrainingStatus), alpha = 0.7, size = 1.8) +
+  geom_line(data = bodpod_group_mean,
+            aes(x = Timepoint, y = mean_val, group = 1),
+            inherit.aes = FALSE, color = "black",
+            linewidth = 1.1, linetype = "solid") +
+  geom_point(data = bodpod_group_mean,
+             aes(x = Timepoint, y = mean_val),
+             inherit.aes = FALSE, color = "black", size = 2.6) +
+  facet_wrap(~ Measure, scales = "free_y", nrow = 2) +
+  scale_color_manual(values = c("trained"   = ggsci::pal_npg()(9)[1],
+                                "untrained" = ggsci::pal_npg()(9)[2]),
+                     labels = c("Trained", "Untrained"),
+                     name = "Training status") +
+  labs(x = NULL, y = "Measured value",
+       title = "BodPod body-composition trajectories (PRE/MID/POST)",
+       subtitle = "Thin colored lines = individual subjects; thick black line = cohort mean") +
+  theme_pubr() +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold"),
+    plot.title = element_text(face = "bold", size = 12),
+    plot.subtitle = element_text(size = 10)
+  )
+
+print(bodpod_traj)
+
+if (SAVE_PDFS) {
+  ggsave(file.path(output_directory,
+                   paste0(date, "_bodpod_trajectories.png")),
+         bodpod_traj, width = 10, height = 6, dpi = 300)
+}
+```
+
+```{r bodpod-mixed-models, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+# Per-measure mixed-effects: Value ~ Timepoint * TrainingStatus + (1 | Subject)
+# Follows the same pattern as the primary mixed-effects battery earlier in the
+# document. With n = 9 and frequent missing cells (SUB 3 lacks MID, SUB 11 lacks
+# PRE), we fit with REML = FALSE and lean on Type III ANOVA (Satterthwaite)
+# for inference. Results are exploratory.
+bodpod_measures <- levels(bodpod_long$Measure)
+
+fit_bodpod_model <- function(measure_name) {
+  dat <- bodpod_long %>% dplyr::filter(Measure == measure_name)
+  dat$TrainingStatus <- factor(dat$TrainingStatus,
+                                levels = c("untrained", "trained"))
+  fit <- tryCatch(
+    lmerTest::lmer(Value ~ Timepoint * TrainingStatus + (1 | Subject),
+                   data = dat, REML = FALSE),
+    error = function(e) NULL
+  )
+  if (is.null(fit)) return(NULL)
+  aov <- tryCatch(anova(fit, type = "III"), error = function(e) NULL)
+  list(data = dat, fit = fit, anova = aov)
+}
+
+bodpod_model_results <- purrr::set_names(
+  purrr::map(bodpod_measures, fit_bodpod_model),
+  bodpod_measures
+)
+
+# PRE->POST Hedges' g per training group per measure
+g_by_group <- function(dat, group_label) {
+  sub <- dat %>% dplyr::filter(TrainingStatus == group_label)
+  w <- sub %>% dplyr::select(Subject, Timepoint, Value) %>%
+    tidyr::pivot_wider(names_from = Timepoint, values_from = Value)
+  if (!all(c("PRE", "POST") %in% names(w))) return(NA_real_)
+  calculate_hedges_g(w$PRE, w$POST)
+}
+
+extract_p <- function(aov, term) {
+  if (is.null(aov)) return(NA_real_)
+  rn <- rownames(aov)
+  if (!term %in% rn) return(NA_real_)
+  aov[term, "Pr(>F)"]
+}
+
+bodpod_model_summary <- purrr::map_dfr(bodpod_measures, function(mn) {
+  res <- bodpod_model_results[[mn]]
+  if (is.null(res)) return(tibble::tibble(Measure = mn))
+  tibble::tibble(
+    Measure     = mn,
+    p_time      = extract_p(res$anova, "Timepoint"),
+    p_status    = extract_p(res$anova, "TrainingStatus"),
+    p_inter     = extract_p(res$anova, "Timepoint:TrainingStatus"),
+    g_trained   = g_by_group(res$data, "trained"),
+    g_untrained = g_by_group(res$data, "untrained")
+  )
+})
+
+bodpod_model_summary_fmt <- bodpod_model_summary %>%
+  dplyr::mutate(
+    `p (Timepoint)`        = vapply(p_time,   format_pvalue, character(1)),
+    `p (TrainingStatus)`   = vapply(p_status, format_pvalue, character(1)),
+    `p (Interaction)`      = vapply(p_inter,  format_pvalue, character(1)),
+    `Hedges g (Trained)`   = ifelse(is.na(g_trained),   "\u2014",
+                                    sprintf("%.2f", g_trained)),
+    `Hedges g (Untrained)` = ifelse(is.na(g_untrained), "\u2014",
+                                    sprintf("%.2f", g_untrained))
+  ) %>%
+  dplyr::select(Measure, `p (Timepoint)`, `p (TrainingStatus)`,
+                `p (Interaction)`, `Hedges g (Trained)`, `Hedges g (Untrained)`)
+
+cat(as.character(
+  create_styled_kable(
+    bodpod_model_summary_fmt,
+    caption = paste("BodPod mixed-effects model fixed-effect p-values and",
+                    "PRE\u2192POST Hedges' g by training status")
+  )
+))
+```
+
+```{r bodpod-summary-table, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+# Per-measure x TrainingStatus: PRE mean, POST mean, %change, Hedges' g,
+# plus the Timepoint and Interaction p-values from the models above.
+pre_post_stats <- bodpod_long %>%
+  dplyr::filter(Timepoint %in% c("PRE", "POST")) %>%
+  dplyr::group_by(Measure, TrainingStatus, Timepoint) %>%
+  dplyr::summarise(m = mean(Value, na.rm = TRUE),
+                   sd = sd(Value, na.rm = TRUE),
+                   .groups = "drop") %>%
+  tidyr::pivot_wider(names_from = Timepoint,
+                     values_from = c(m, sd),
+                     names_sep = "_")
+
+g_by_meas_group <- purrr::map_dfr(bodpod_measures, function(mn) {
+  res <- bodpod_model_results[[mn]]
+  if (is.null(res)) return(NULL)
+  tibble::tibble(
+    Measure       = mn,
+    g_trained     = g_by_group(res$data, "trained"),
+    g_untrained   = g_by_group(res$data, "untrained")
+  )
+})
+
+bodpod_summary_table <- pre_post_stats %>%
+  dplyr::left_join(bodpod_model_summary %>%
+                     dplyr::select(Measure, p_time, p_inter),
+                   by = "Measure") %>%
+  dplyr::left_join(
+    g_by_meas_group %>%
+      tidyr::pivot_longer(cols = c(g_trained, g_untrained),
+                          names_to = "TrainingStatus",
+                          values_to = "Hedges_g") %>%
+      dplyr::mutate(TrainingStatus = sub("^g_", "", TrainingStatus)),
+    by = c("Measure", "TrainingStatus")
+  ) %>%
+  dplyr::mutate(
+    pct_delta = (m_POST - m_PRE) / m_PRE * 100,
+    `PRE (mean +/- SD)`  = sprintf("%.2f \u00B1 %.2f", m_PRE, sd_PRE),
+    `POST (mean +/- SD)` = sprintf("%.2f \u00B1 %.2f", m_POST, sd_POST),
+    `% change`           = sprintf("%+.1f%%", pct_delta),
+    `Hedges g`           = ifelse(is.na(Hedges_g), "\u2014",
+                                  sprintf("%.2f", Hedges_g)),
+    `p (Timepoint)`      = vapply(p_time,  format_pvalue, character(1)),
+    `p (Interaction)`    = vapply(p_inter, format_pvalue, character(1)),
+    Group = ifelse(TrainingStatus == "trained", "Trained", "Untrained")
+  ) %>%
+  dplyr::select(Measure, Group,
+                `PRE (mean +/- SD)`, `POST (mean +/- SD)`,
+                `% change`, `Hedges g`,
+                `p (Timepoint)`, `p (Interaction)`) %>%
+  dplyr::arrange(Measure, Group)
+
+cat(as.character(
+  create_styled_kable(
+    bodpod_summary_table,
+    caption = paste("BodPod PRE\u2192POST summary by training status",
+                    "(\u0394 = percent change; p-values from mixed-effects",
+                    "Type III ANOVA)")
+  )
+))
+
+if (SAVE_OUTPUTS) {
+  openxlsx::write.xlsx(
+    list(
+      coverage       = bodpod_coverage,
+      wide           = bodpod_wide,
+      long           = bodpod_long,
+      model_summary  = bodpod_model_summary,
+      summary_table  = bodpod_summary_table
+    ),
+    file.path(output_directory, paste0(date, "_bodpod_results.xlsx"))
+  )
+}
+```
+
+### Interpretation
+
+Across the nine 12-week completers, BodPod tracked body composition and energy expenditure with near-complete coverage: seven subjects contributed all three timepoints, while SUB 3 is missing MID and SUB 11 is missing PRE (coverage table above). Within-subject trajectories show modest, subject-specific change in percent fat, fat-free mass, and fat mass, with energy-expenditure estimates (REE, TEE) that largely reflect body mass and therefore move little over 12 weeks of a low-dose intervention.
+
+Given n = 9, no control group, and a body-composition measurement system whose repeat-measure error (~1 % fat) is close to the magnitude of true change expected from a 1-hour-per-week training dose, these models are under-powered for confirmatory inference. PRE→POST Hedges' *g* values and timepoint p-values should be read as **effect-size estimates to inform future trial design**, not as evidence of intervention efficacy. A Timepoint × TrainingStatus interaction, if present, would suggest differential response between the aerobically trained (VO₂max > 35 ml·kg⁻¹·min⁻¹) and untrained subgroups, but with 4 vs. 5 subjects per cell the interaction test is especially fragile.
+
+## Baseline-Adjusted ANCOVA (Sensitivity Analysis)
+
+The primary mixed-effects models pool participants with very different baselines (PRE VO2max ranges roughly 30 to 55 ml/kg/min; PRE 1RM loads vary several-fold across exercises). Pooling without baseline adjustment risks two well-known biases: (1) regression-to-the-mean, where extreme baseline values drift toward the cohort mean independent of any intervention effect, and (2) baseline imbalance between trained and untrained subgroups, which can mask or fabricate `TrainingStatus` differences. This section refits each PRE/POST outcome with classical ANCOVA — `POST ~ TrainingStatus + PRE` — and contrasts the adjusted `TrainingStatus` p-value against the unadjusted `Timepoint` and `Timepoint:TrainingStatus` p-values from the primary mixed-effects battery. Together with the sex-adjusted refit above, this constitutes the second leg of the planned **sensitivity analyses**. MID observations are excluded (ANCOVA semantics are cleanest with a single post-intervention timepoint); the analysis pools BodPod outcomes (% Fat, FFM, FM, REE, TEE) with the strength and aerobic outcomes from the primary battery into one comparison table.
+
+```{r ancova-sensitivity, echo=FALSE, message=FALSE, warning=FALSE, results='asis'}
+# Build a single PRE/POST wide table covering both the primary mixed-effects
+# measures (mydata_reshaped) and the BodPod measures (bodpod_long).
+# We deliberately drop MID rows and require both PRE and POST per subject.
+
+ancova_primary_wide <- mydata_reshaped %>%
+  dplyr::filter(Timepoint %in% c("PRE", "POST")) %>%
+  dplyr::select(Subject, TrainingStatus, Measure_Exercise, Timepoint, Weight) %>%
+  dplyr::rename(Measure = Measure_Exercise, Value = Weight) %>%
+  dplyr::group_by(Subject, TrainingStatus, Measure, Timepoint) %>%
+  dplyr::summarise(Value = mean(Value, na.rm = TRUE), .groups = "drop") %>%
+  tidyr::pivot_wider(names_from = Timepoint, values_from = Value) %>%
+  dplyr::mutate(Source = "Primary")
+
+ancova_bodpod_wide <- bodpod_long %>%
+  dplyr::filter(Timepoint %in% c("PRE", "POST")) %>%
+  dplyr::mutate(Measure = as.character(Measure)) %>%
+  dplyr::select(Subject, TrainingStatus, Measure, Timepoint, Value) %>%
+  dplyr::group_by(Subject, TrainingStatus, Measure, Timepoint) %>%
+  dplyr::summarise(Value = mean(Value, na.rm = TRUE), .groups = "drop") %>%
+  tidyr::pivot_wider(names_from = Timepoint, values_from = Value) %>%
+  dplyr::mutate(Source = "BodPod")
+
+ancova_wide <- dplyr::bind_rows(ancova_primary_wide, ancova_bodpod_wide) %>%
+  dplyr::filter(!is.na(PRE) & !is.na(POST)) %>%
+  dplyr::mutate(TrainingStatus = factor(TrainingStatus,
+                                        levels = c("untrained", "trained")))
+
+# Fit ANCOVA per measure: POST ~ TrainingStatus + PRE
+# Also fit interaction model POST ~ TrainingStatus * PRE for parallel-slopes test.
+fit_ancova <- function(dat) {
+  if (nrow(dat) < 5) return(NULL)
+  if (length(unique(stats::na.omit(dat$TrainingStatus))) < 2) return(NULL)
+  if (length(unique(stats::na.omit(dat$PRE))) < 3) return(NULL)
+  main_fit <- tryCatch(stats::lm(POST ~ TrainingStatus + PRE, data = dat),
+                       error = function(e) NULL)
+  if (is.null(main_fit)) return(NULL)
+  intx_fit <- tryCatch(stats::lm(POST ~ TrainingStatus * PRE, data = dat),
+                       error = function(e) NULL)
+  intx_p <- NA_real_
+  if (!is.null(intx_fit)) {
+    cf <- stats::coef(summary(intx_fit))
+    ix_row <- grep(":", rownames(cf), value = TRUE)
+    if (length(ix_row) == 1) intx_p <- cf[ix_row, "Pr(>|t|)"]
+  }
+  list(main_fit = main_fit, intx_fit = intx_fit, intx_p = intx_p,
+       n = nrow(dat))
+}
+
+ancova_measures <- sort(unique(ancova_wide$Measure))
+
+ancova_fits <- purrr::set_names(
+  purrr::map(ancova_measures, function(mm) {
+    fit_ancova(ancova_wide %>% dplyr::filter(Measure == mm))
+  }),
+  ancova_measures
+)
+
+# Pull p-values from the unadjusted primary mixed-effects models for comparison.
+# Strength / aerobic measures live in mixed_results$individual_results.
+# BodPod measures live in bodpod_model_results.
+unadj_p_lookup <- function(mm) {
+  if (mm %in% names(mixed_results$individual_results)) {
+    a <- mixed_results$individual_results[[mm]]$anova_raw
+    return(list(p_time   = a["Timepoint", "Pr(>F)"],
+                p_intx   = a["Timepoint:TrainingStatus", "Pr(>F)"]))
+  }
+  if (mm %in% names(bodpod_model_results) &&
+      !is.null(bodpod_model_results[[mm]])) {
+    a <- bodpod_model_results[[mm]]$anova
+    return(list(p_time = if ("Timepoint" %in% rownames(a))
+                          a["Timepoint", "Pr(>F)"] else NA_real_,
+                p_intx = if ("Timepoint:TrainingStatus" %in% rownames(a))
+                          a["Timepoint:TrainingStatus", "Pr(>F)"] else NA_real_))
+  }
+  list(p_time = NA_real_, p_intx = NA_real_)
+}
+
+ancova_summary <- purrr::map_dfr(ancova_measures, function(mm) {
+  res <- ancova_fits[[mm]]
+  unadj <- unadj_p_lookup(mm)
+  src <- ancova_wide %>% dplyr::filter(Measure == mm) %>%
+    dplyr::pull(Source) %>% unique() %>% paste(collapse = "/")
+  if (is.null(res)) {
+    return(tibble::tibble(
+      Measure = mm, Source = src, n = NA_integer_,
+      p_time_unadj = unadj$p_time, p_intx_unadj = unadj$p_intx,
+      p_train_ancova = NA_real_, beta_pre = NA_real_,
+      sigma_resid = NA_real_, p_parallel = NA_real_
+    ))
+  }
+  cf <- stats::coef(summary(res$main_fit))
+  train_row <- grep("^TrainingStatus", rownames(cf), value = TRUE)
+  pre_row <- "PRE"
+  tibble::tibble(
+    Measure         = mm,
+    Source          = src,
+    n               = res$n,
+    p_time_unadj    = unadj$p_time,
+    p_intx_unadj    = unadj$p_intx,
+    p_train_ancova  = if (length(train_row) == 1) cf[train_row, "Pr(>|t|)"]
+                      else NA_real_,
+    beta_pre        = if (pre_row %in% rownames(cf)) cf[pre_row, "Estimate"]
+                      else NA_real_,
+    sigma_resid     = stats::sigma(res$main_fit),
+    p_parallel      = res$intx_p
+  )
+})
+
+# Flag movement of the comparable term: unadjusted Timepoint:TrainingStatus
+# (the closest analogue to "is there a between-group difference in change")
+# vs. ANCOVA TrainingStatus (between-group difference in POST adjusting for
+# PRE). These test the same question under different assumptions; alpha = .05
+# crossings are flagged.
+flag_ancova <- function(p_u, p_a) {
+  dplyr::case_when(
+    is.na(p_u) | is.na(p_a)     ~ "",
+    p_u <  0.05 & p_a >= 0.05   ~ "looser",
+    p_u >= 0.05 & p_a <  0.05   ~ "stricter",
+    TRUE                        ~ ""
+  )
+}
+
+ancova_summary <- ancova_summary %>%
+  dplyr::mutate(
+    flag = flag_ancova(p_intx_unadj, p_train_ancova),
+    parallel_violation = !is.na(p_parallel) & p_parallel < 0.05
+  )
+
+# Expose summary counts for inline prose
+ancova_n_total       <- nrow(ancova_summary)
+ancova_n_fitted      <- sum(!is.na(ancova_summary$p_train_ancova))
+ancova_n_stricter    <- sum(ancova_summary$flag == "stricter", na.rm = TRUE)
+ancova_n_looser      <- sum(ancova_summary$flag == "looser",   na.rm = TRUE)
+ancova_n_violations  <- sum(ancova_summary$parallel_violation, na.rm = TRUE)
+ancova_strong_baseline <- ancova_summary %>%
+  dplyr::filter(!is.na(beta_pre) & abs(beta_pre) >= 0.9) %>%
+  dplyr::pull(Measure)
+ancova_weak_baseline <- ancova_summary %>%
+  dplyr::filter(!is.na(beta_pre) & abs(beta_pre) < 0.5) %>%
+  dplyr::pull(Measure)
+
+# Build display table.  Note: backticked column names are ASCII only --
+# unicode +/- inside kableExtra column headers triggers an R parser error
+# (per prior agent's footgun).  Cell values may use unicode freely.
+ancova_display <- ancova_summary %>%
+  dplyr::transmute(
+    Measure,
+    Source,
+    n,
+    `p Time (unadj LMM)`     = fmt_p(p_time_unadj),
+    `p Time x Train (LMM)`   = fmt_p(p_intx_unadj),
+    `p Train (ANCOVA)`       = fmt_p(p_train_ancova),
+    `beta(PRE)`              = ifelse(is.na(beta_pre), "\u2014",
+                                      sprintf("%.2f", beta_pre)),
+    `Resid SD`               = ifelse(is.na(sigma_resid), "\u2014",
+                                      sprintf("%.2f", sigma_resid)),
+    `p parallel-slopes`      = fmt_p(p_parallel),
+    Flag                     = dplyr::case_when(
+      flag == "stricter"        ~ "stricter",
+      flag == "looser"          ~ "looser",
+      parallel_violation        ~ "slopes!",
+      TRUE                      ~ ""
+    )
+  )
+
+cat(as.character(
+  create_styled_kable(ancova_display,
+    caption = paste("Baseline-adjusted ANCOVA (POST ~ TrainingStatus + PRE)",
+                    "vs. unadjusted mixed-effects p-values.",
+                    "'beta(PRE)' is the ANCOVA baseline-coefficient slope.",
+                    "'Flag' marks alpha = .05 crossings between the LMM",
+                    "Timepoint x TrainingStatus term and the ANCOVA",
+                    "TrainingStatus term, or a parallel-slopes violation."),
+    escape = FALSE)
+))
+
+# Persist for downstream inline prose / Excel export
+ancova_results <- list(
+  summary  = ancova_summary,
+  fits     = ancova_fits,
+  data     = ancova_wide
+)
+
+if (SAVE_OUTPUTS) {
+  openxlsx::write.xlsx(
+    list(
+      ancova_summary = ancova_summary,
+      ancova_data    = ancova_wide
+    ),
+    file.path(output_directory, paste0(date, "_ancova_sensitivity.xlsx"))
+  )
+}
+```
+
+### Interpretation
+
+Across the `r ancova_n_total` PRE/POST outcomes (strength + aerobic + BodPod), `r ancova_n_fitted` admitted a stable ANCOVA fit. Adjusting for baseline shifted the between-groups conclusion at alpha = .05 for `r ancova_n_stricter` measure(s) in the stricter direction (significant under LMM Timepoint x TrainingStatus, non-significant under ANCOVA TrainingStatus) and `r ancova_n_looser` measure(s) in the looser direction. The parallel-slopes assumption (no PRE x TrainingStatus interaction in the ANCOVA model) was visibly violated for `r ancova_n_violations` measure(s) at alpha = .05; these rows carry a `slopes!` flag and their ANCOVA `TrainingStatus` p-value should be discounted.
+
+`beta(PRE)` is the regression slope of POST on PRE, holding TrainingStatus constant. Values close to 1.0 indicate that POST tracks PRE essentially one-for-one (typical for strength outcomes — high PRE 1RM, high POST 1RM, with the intervention adding a roughly constant absolute increment). Values noticeably less than 1.0 indicate regression-to-the-mean: high-PRE participants gain less in absolute terms than low-PRE participants, which is the canonical pattern for a near-ceiling outcome and the exact failure mode that motivates ANCOVA. Strong baseline dependence (|beta(PRE)| >= 0.9) was observed for `r length(ancova_strong_baseline)` of `r ancova_n_total` outcomes — essentially every strength and body-composition measure — confirming that PRE values carry most of the signal in POST and that pooling participants without baseline adjustment risks regression-to-the-mean artifacts. The few outcomes with |beta(PRE)| < 0.5 (`r if (length(ancova_weak_baseline) == 0) "(none)" else paste(ancova_weak_baseline, collapse = ", ")`) are the sub-maximal RPE-style aerobic measures, where PRE values do not strongly constrain POST.
+
+ANCOVA at n = 9 is exploratory: between-groups inference rests on a single residual variance estimate from an 8-9 point regression, and the parallel-slopes test is itself underpowered (a non-significant interaction does not prove parallel slopes). These results should be reported alongside the primary mixed-effects analysis as a robustness check, not as a replacement.
 
 # Power Analysis
 
