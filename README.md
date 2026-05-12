@@ -22,31 +22,30 @@ Given n = 9 with no control group, inferential results are treated as **explorat
 ## Repo layout
 
 ```
-MRP/
-├── MRP/
-│   ├── 01_MRP_Analysis.Rmd        # Canonical analysis (refactored across Phases 0–10)
-│   ├── helpers/
-│   │   ├── paths.R                # Absolute-path anchoring on MRP.Rproj
-│   │   ├── setup.R                # Packages, seed, namespace conflicts
-│   │   └── functions.R            # fmt_p, fmt_g, create_styled_kable,
-│   │                              #   Hedges' g, MRP color scales, labels
-│   ├── MRP.xlsx                   # Anonymized analytic dataset
-│   │                              #   (sheets: Strength, vo2data,
-│   │                              #   Exercise Session RT, HIIT, HIFT)
-│   ├── MRP.Rproj                  # RStudio project anchor
-│   ├── renv.lock                  # Dependency lock file
-│   ├── 07112025 MRP_Markdown.Rmd  # Historical baseline (preserved for diff)
-│   └── [other dated .Rmd / .R]    # Earlier exploratory scripts (see below)
-├── DATA/                          # Raw subject-level data — NOT TRACKED
-├── LICENSE                        # MIT (code)
-├── CITATION.cff                   # GitHub citation widget
+MRP/                              # repo root = project root
+├── 01_MRP_Analysis.Rmd           # Canonical analysis (Phases 0–10 refactor)
+├── MRP.Rproj                     # RStudio project anchor
+├── MRP.xlsx                      # Anonymized analytic dataset
+│                                 #   (sheets: Strength, vo2data,
+│                                 #   Exercise Session RT, HIIT, HIFT)
+├── renv.lock                     # Dependency lock file
+├── helpers/
+│   ├── paths.R                   # Absolute-path anchoring on MRP.Rproj
+│   ├── setup.R                   # Packages, seed, namespace conflicts
+│   └── functions.R               # fmt_p, fmt_g, create_styled_kable,
+│                                 #   Hedges' g, MRP color scales, labels
+├── renv/                         # renv infrastructure (library/ gitignored)
+├── legacy/                       # Earlier exploratory scripts (see legacy/README.md)
+├── DATA/                         # Raw subject-level data — NOT TRACKED
+├── LICENSE                       # MIT (code)
+├── CITATION.cff                  # GitHub citation widget
 └── README.md
 ```
 
 ## Rendering the analysis
 
 ```r
-# Open MRP/MRP.Rproj in RStudio (or set working directory to MRP/)
+# Open MRP.Rproj in RStudio (working directory = repo root)
 renv::restore()                         # restore package versions
 rmarkdown::render("01_MRP_Analysis.Rmd")
 ```
@@ -78,18 +77,18 @@ Two sensitivity analyses follow the primary results:
 
 ## Provenance of earlier scripts
 
-The `MRP/` directory contains several dated `.Rmd` and `.R` files from earlier stages of the analysis (`script.R`, `Session_script.R`, `chatGPT_script.R`, `TvU Script.R`, `03142025 MRP_Markdown.Rmd`, etc.). These are preserved as a historical record of how the analysis evolved, not as parts of the canonical pipeline. They contain hard-coded local paths (`C:/MRP`, `G:/My Drive/...`) from the original Windows + Google Drive workflow and are not expected to run on a clean clone — use `01_MRP_Analysis.Rmd` for any actual rendering.
+The `legacy/` directory contains dated `.Rmd` and `.R` files from earlier stages of the analysis (`script.R`, `Session_script.R`, `chatGPT_script.R`, `TvU Script.R`, `03142025 MRP_Markdown.Rmd`, etc.). These are preserved as a historical record of how the analysis evolved, not as parts of the canonical pipeline. They contain hard-coded local paths (`C:/MRP`, `G:/My Drive/...`) from the original Windows + Google Drive workflow and are not expected to run on a clean clone — use `01_MRP_Analysis.Rmd` for any actual rendering. See [`legacy/README.md`](legacy/README.md) for a file-by-file index.
 
 ## Data
 
-- **`MRP/MRP.xlsx`** (tracked) is the IRB-approved anonymized analytic dataset. Subjects are coded `SUB <n>`; no direct identifiers.
+- **`MRP.xlsx`** (tracked) is the IRB-approved anonymized analytic dataset. Subjects are coded `SUB <n>`; no direct identifiers.
 - **`DATA/`** (not tracked, gitignored) holds raw per-subject material — consent forms, physician clearance, PARQ, HR/HRV exports, Polar JSONs. These remain on the lab share for provenance.
 - HR/HRV / Polar-session data from two participant cohorts has been recovered into `DATA/` for a future scope expansion; it is **not used by the analyses in this repo**.
 
 ## Reproducibility
 
 - **R 4.5.2** (last verified 2026-04-09).
-- Package versions pinned in `MRP/renv.lock`; restore with `renv::restore()`.
+- Package versions pinned in `renv.lock`; restore with `renv::restore()`.
 - Reproducibility seed: `set.seed(0308)` in `helpers/setup.R` (applied before any stochastic call).
 
 ## Status
