@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use this analysis pipeline, please cite it as below."
+type: software
+title: "Maximal Returns Protocol — analysis pipeline"
+abstract: >
+  R analysis pipeline for the Maximal Returns Protocol (MRP) study, a
+  12-week, 1-hour-per-week concurrent training intervention combining
+  HIIT, single-set-to-failure resistance training, and HIFT plyometrics
+  (n = 9 recreationally active adults; PRE / MID / POST design).
+  Implements per-measure linear mixed-effects models with subject random
+  intercepts, Tukey-adjusted post-hoc contrasts, Hedges' g effect sizes
+  with small-sample correction, and sex-adjusted plus baseline-adjusted
+  ANCOVA sensitivity analyses.
+authors:
+  - family-names: "Bowie"
+    given-names: "Jacob"
+    affiliation: "University of Connecticut"
+keywords:
+  - concurrent training
+  - high-intensity interval training
+  - resistance training
+  - mixed-effects models
+  - pilot study
+  - exercise physiology
+license: MIT
+version: "0.10.0"
+date-released: "2026-05-12"
+repository-code: "https://github.com/JacobBowie/MRP"
