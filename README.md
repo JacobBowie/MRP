@@ -2,6 +2,10 @@
 
 Analysis code for a time-efficient concurrent training intervention — 12 weeks, 1 hour/week, combining HIIT + resistance training + HIFT plyometrics. Part of Dr. Jacob Bowie's dissertation work at the University of Connecticut.
 
+![Three-panel weekly progression: six resistance-training lifts with significance markers, weekly repetitions, and HIIT intensity (%Wmax). Trained vs untrained shown in red vs blue, female vs male as circles vs triangles.](assets/three_panel_progression.png)
+
+*Weekly progression across the 12-week intervention.* **(a)** Per-exercise load progression with significance markers across six RT lifts. **(b)** Total weekly repetitions. **(c)** HIIT intensity (% Wmax). Color: trained (red) vs untrained (blue); shape: female (circle) vs male (triangle).
+
 ## Study design
 
 - **Intervention**: 12 weeks, one 60-minute session per week. Each session = 15 min HIIT (cycle, 5 × 1 min at 85% Wmax) + 15 min single-set-to-failure resistance training across six multi-joint exercises + 10 min HIFT plyometric circuit.

@@ -28,8 +28,11 @@ Thumbs.db
 *.pptx
 *.docx
 
+# Exception: README hero / curated repo figures
+!assets/*.png
+
 # Raw subject-level data (PHI: consent forms, clearance forms, HR/HRV exports).
-# IRB-approved anonymized analytic data lives in MRP/MRP.xlsx (tracked).
+# IRB-approved anonymized analytic data lives in MRP.xlsx (tracked, at repo root).
 DATA/
 
 # Internal session/operational notes (not for public repo):
