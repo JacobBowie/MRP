@@ -28,5 +28,15 @@ Thumbs.db
 *.pptx
 *.docx
 
-# DATA folder raw files (large, tracked separately if needed)
-# DATA/
+# Raw subject-level data (PHI: consent forms, clearance forms, HR/HRV exports).
+# IRB-approved anonymized analytic data lives in MRP/MRP.xlsx (tracked).
+DATA/
+
+# Internal session/operational notes (not for public repo):
+#   - LOOSE_ENDS.md: inter-session signals (HR data scoping, etc.)
+#   - journal_target_audit_*.md: journal targeting strategy
+#   - manuscript_revision_plan.md: contains verbatim reviewer comments (confidential)
+LOOSE_ENDS.md
+journal_target_audit_*.md
+manuscript_revision_plan.md
+POLISH_PUNCHLIST.md
